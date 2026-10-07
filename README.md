@@ -122,4 +122,4 @@ and the date above will change.
 
 ## Contact
 
-Questions about this policy can be sent to: [your contact email]
+Questions about this policy can be sent to: medxtension@gmail.com
