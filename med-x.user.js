@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MED-X
 // @namespace    med-x
-// @version      3.0.0
+// @version      3.2.0
 // @description  Filter and highlight your X timeline: languages, flags, location, checkmarks, engagement bait, reposts and clutter.
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -114,7 +114,7 @@ function followOtherTabs() {
   };
   for (const k of GM_listValues()) watch(k);
   for (const k of ["sync:settings", "local:mutedAccounts", "local:snoozedQuotes",
-                   "local:medxBackgroundImage", "local:medxMutedWords"]) watch(k);
+                   "local:medxBackgroundImage", "local:medxBackgroundImage2", "local:medxMutedWords"]) watch(k);
 }
 
 const CHROME = {
@@ -146,12 +146,12 @@ function whenReady(fn) {
 
 /* ---------- styles ---------- */
 
-GM_addStyle("/* The @font-face for \"Twemoji Country Flags\" is injected by content.js, not\n   declared here: a relative url() in a content-script stylesheet resolves\n   against the page, so ../fonts/... would be fetched from x.com \u2014 which\n   answers unknown paths with its HTML shell and a 200, giving Chrome a\n   \"failed to decode downloaded font\" rather than an honest 404. The real\n   path needs chrome.runtime.getURL(), which only exists at runtime.\n\n   The collapsed bar is a ::before pseudo-element on the cell itself, so no\n   nodes are added to X's DOM. No fixed colours either: currentColor and\n   neutral alpha work in the light, dim and lights-out themes. */\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden] > * {\n  display: none !important;\n}\n\n/* Hold Alt to see everything that's hidden. Removed posts stay removed \u2014\n   there's nothing left of them to show. */\nhtml[data-medx-peek] div[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"] > * {\n  display: revert !important;\n}\n\n/* The bar goes while peeking. Left at half opacity it sat as a coloured strip\n   above the post's own content, and being clickable it swallowed clicks meant\n   for whatever was underneath \u2014 a video wouldn't play. */\nhtml[data-medx-peek] div[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"]::before {\n  display: none;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"remove\"] {\n  display: none !important;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"] {\n  cursor: pointer;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"]::before {\n  content: attr(data-medx-label);\n  display: block;\n  padding: 10px 16px 10px 13px;\n  border-bottom: 1px solid rgba(128, 138, 148, 0.3);\n  border-left: 3px solid rgba(128, 138, 148, 0.45);\n  font: 400 12px/1.3 \"Twemoji Country Flags\", system-ui, -apple-system,\n    \"Segoe UI\", sans-serif;\n  color: rgb(113, 118, 123);\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"]:hover::before {\n  background: rgba(128, 138, 148, 0.08);\n  color: rgb(139, 146, 153);\n}\n\n/* Observation mode: a score badge in the corner, hiding nothing. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-score] {\n  position: relative;\n}\n\n/* The logo button. No text beside it \u2014 the score and what made it up live in\n   the menu, where there is room to read them. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-score]::after {\n  content: \"\";\n  position: absolute;\n  bottom: 8px;\n  left: 10px;\n  z-index: 2;\n  width: 22px;\n  height: 22px;\n  background-repeat: no-repeat;\n  background-position: center;\n  /* Filling the box exactly, so the artwork and any glow share one circle. */\n  background-size: 100% 100%;\n  /* Clickable: pseudo-elements don't fire events themselves \u2014 the click lands\n     on the cell and is hit-tested against this box, the same trick the\n     collapsed bar uses. */\n  pointer-events: auto;\n  cursor: pointer;\n  opacity: 0.85;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n\n/* Hover is driven by an attribute rather than :hover \u2014 CSS cannot hover a\n   pseudo-element, and hovering the cell would grow the button whenever the\n   pointer was anywhere in the post. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-badge-hover]::after {\n  transform: scale(1.25);\n  opacity: 1;\n}\n\n@media (prefers-reduced-motion: reduce) {\n  div[data-testid=\"cellInnerDiv\"][data-medx-score]::after {\n    transition: none;\n  }\n}\n\n/* Anything that scored gets a glow, so a flagged post is visible without\n   opening the menu. Over the threshold it burns brighter.\n\n   drop-shadow rather than box-shadow: box-shadow traces the element's box,\n   which is square and slightly larger than the round artwork inside it, so the\n   halo sat off to one side. drop-shadow is built from the image's own alpha,\n   so it follows the circle exactly. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-score]:not([data-medx-zero])::after {\n  filter: drop-shadow(0 0 3px rgba(90, 170, 255, 0.9));\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-over]::after {\n  filter: drop-shadow(0 0 5px rgba(90, 170, 255, 1))\n    drop-shadow(0 0 9px rgba(90, 170, 255, 0.6));\n}\n\n/* Greyscale, for anyone who'd rather the timeline stayed monochrome. Applied\n   to the artwork through the same filter the glow uses, so the two compose\n   rather than one overriding the other. */\nhtml[data-medx-badge-grey] div[data-testid=\"cellInnerDiv\"][data-medx-score]::after {\n  filter: grayscale(1);\n}\n\nhtml[data-medx-badge-grey]\n  div[data-testid=\"cellInnerDiv\"][data-medx-score]:not([data-medx-zero])::after {\n  filter: grayscale(1) drop-shadow(0 0 3px rgba(90, 170, 255, 0.9));\n}\n\nhtml[data-medx-badge-grey] div[data-testid=\"cellInnerDiv\"][data-medx-over]::after {\n  filter: grayscale(1) drop-shadow(0 0 5px rgba(90, 170, 255, 1))\n    drop-shadow(0 0 9px rgba(90, 170, 255, 0.6));\n}\n\n/* Nothing scored: still there to click, just quiet about it. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-zero]::after {\n  opacity: 0.3;\n}\n\n/* X dropped Twemoji, so flags now render with the system font \u2014 and Windows\n   has no country flag glyphs, showing \"PR\" instead of a Puerto Rican flag.\n   Our bundled font is unicode-range'd to flag codepoints only, so listing it\n   first pulls flags from it and leaves every other character alone.\n\n   The rest of the stack comes from --medx-name-font, which content.js reads\n   off X's own post text at runtime. Hardcoding X's font stack here would mean\n   silently restyling every display name the day they rename TwitterChirp; the\n   literals below are only a fallback for before the probe has run. */\nhtml[data-medx-flagfont] div[data-testid=\"User-Name\"],\nhtml[data-medx-flagfont] div[data-testid=\"User-Name\"] span,\nhtml[data-medx-flagfont] div[data-testid=\"UserName\"],\nhtml[data-medx-flagfont] div[data-testid=\"UserName\"] span,\nhtml[data-medx-flagfont] div[data-testid=\"UserDescription\"],\nhtml[data-medx-flagfont] div[data-testid=\"UserDescription\"] span {\n  font-family: \"Twemoji Country Flags\",\n    var(\n      --medx-name-font,\n      TwitterChirp,\n      -apple-system,\n      BlinkMacSystemFont,\n      \"Segoe UI\",\n      Roboto,\n      Helvetica,\n      Arial,\n      sans-serif\n    ) !important;\n}\n\n/* A post the user revealed. Deliberately quieter than the collapsed bar: it's\n   a reminder, not a control, and the post itself is the thing being read. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-revealed]::before {\n  content: attr(data-medx-revealed-label);\n  display: block;\n  padding: 7px 16px 5px 13px;\n  border-left: 3px solid rgba(128, 138, 148, 0.35);\n  font: 400 12px/1.3 \"Twemoji Country Flags\", system-ui, -apple-system,\n    \"Segoe UI\", sans-serif;\n  color: rgb(113, 118, 123);\n  opacity: 0.75;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-revealed]:hover::before {\n  opacity: 1;\n  background: rgba(128, 138, 148, 0.08);\n}\n\n/* The matched text, painted via the CSS Custom Highlight API \u2014 no <mark>\n   elements, so nothing is inserted into X's DOM. Only a few properties are\n   allowed on ::highlight; background-color and colour are among them. */\n::highlight(medx-bait) {\n  background-color: rgba(200, 130, 20, 0.3);\n  text-decoration: underline;\n  text-decoration-color: rgba(200, 130, 20, 0.85);\n  text-decoration-thickness: 1px;\n  text-underline-offset: 2px;\n}\n\n/* X's \"Show N posts\" bar at the top of a stale timeline. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-bar] {\n  display: none !important;\n}\n\n/* Watched posts. The tint and the ::highlight colour are generated per term by\n   content.js, since the colour is arbitrary \u2014 see refreshWatchStyles(). Only\n   the shared shape lives here. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-watch] {\n  background-color: rgba(200, 130, 20, 0.11);\n}\n\n\n/* Sidebar widgets. Toggled by attributes on <html> rather than per-element, so\n   there's nothing to re-apply as X re-renders the sidebar. */\nhtml[data-medx-hide-follow] aside[aria-label=\"Who to follow\"],\nhtml[data-medx-hide-follow] aside[role=\"complementary\"][aria-label*=\"follow\" i] {\n  display: none !important;\n}\n\nhtml[data-medx-hide-premium] aside[aria-label=\"Subscribe to Premium\"],\nhtml[data-medx-hide-premium] aside[role=\"complementary\"][aria-label*=\"Premium\" i] {\n  display: none !important;\n}\n\n/* The suggestions beside a thread. Matched loosely as well as exactly, since\n   X has called this both \"Relevant people\" and \"People in this conversation\"\n   at different times. */\nhtml[data-medx-hide-relevant] aside[aria-label=\"Relevant people\"],\nhtml[data-medx-hide-relevant] aside[role=\"complementary\"][aria-label*=\"relevant\" i],\nhtml[data-medx-hide-relevant] aside[role=\"complementary\"][aria-label*=\"people\" i] {\n  display: none !important;\n}\n\nhtml[data-medx-hide-relevant]\n  [data-testid=\"sidebarColumn\"] div:has(> aside[aria-label*=\"people\" i]) {\n  display: none !important;\n}\n\n/* The Grok and chat docks: absolutely positioned roots in the bottom-right\n   corner, each with its own testid. */\nhtml[data-medx-hide-grok] [data-testid=\"GrokDrawer\"] {\n  display: none !important;\n}\n\nhtml[data-medx-hide-chat] [data-testid=\"chat-drawer-root\"] {\n  display: none !important;\n}\n\n/* A post whose video carries a moving corner watermark. Marked rather than\n   hidden: detection needs playback, so the post has already been seen. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-watermark] {\n  box-shadow: inset 3px 0 0 rgba(255, 90, 160, 0.9);\n}\n\n/* \"Account based in\" on a profile. A pseudo-element on the name block, so\n   nothing is inserted into markup React owns. */\n[data-testid=\"HoverCard\"][data-medx-based-in]::after,\n[data-testid=\"UserName\"][data-medx-based-in]::after {\n  content: \"Account based in \" attr(data-medx-based-in);\n  display: block;\n  margin: 4px 16px 12px;\n  font-size: 13px;\n  font-weight: 400;\n  color: rgb(113, 118, 123);\n}\n\n/* Left sidebar entries. Both the testid and the href are matched where a\n   testid exists: the testid is the more stable of the two, and the href\n   catches the entries X never gave one. Scoped to nav so a link to the same\n   place elsewhere on the page is untouched. */\nhtml[data-medx-nav-explore] nav a[data-testid=\"AppTabBar_Explore_Link\"],\nhtml[data-medx-nav-explore] nav a[href=\"/explore\"],\nhtml[data-medx-nav-follow] nav a[data-testid=\"AppTabBar_Follow_Link\"],\nhtml[data-medx-nav-follow] nav a[href=\"/i/connect_people\"],\nhtml[data-medx-nav-grok] nav a[href=\"/i/grok\"],\nhtml[data-medx-nav-creator] nav a[href=\"/i/jf/creators/studio\"],\nhtml[data-medx-nav-premium] nav a[data-testid=\"premium-signup-tab\"],\nhtml[data-medx-nav-premium] nav a[href=\"/i/premium_sign_up\"] {\n  display: none !important;\n}\n\n/* The badge menu. Appended to document.body rather than into a post, so it\n   sits outside the tree React manages and can hold real buttons. */\n.medx-menu {\n  position: fixed;\n  z-index: 2147483000;\n  min-width: 210px;\n  max-width: 280px;\n  padding: 6px;\n  border: 1px solid rgba(128, 138, 148, 0.35);\n  border-radius: 10px;\n  background: rgb(21, 24, 28);\n  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);\n  font: 400 13px/1.45 system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  color: rgb(231, 233, 234);\n}\n\n@media (prefers-color-scheme: light) {\n  .medx-menu {\n    background: #fff;\n    color: #0f1419;\n    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);\n  }\n}\n\n.medx-menu-title {\n  padding: 6px 10px 4px;\n  font-weight: 600;\n}\n\n.medx-menu-note {\n  padding: 0 10px 8px;\n  color: rgb(113, 118, 123);\n  font-size: 12px;\n  border-bottom: 1px solid rgba(128, 138, 148, 0.25);\n  margin-bottom: 4px;\n}\n\n.medx-menu button {\n  display: block;\n  width: 100%;\n  padding: 7px 10px;\n  border: 0;\n  border-radius: 6px;\n  background: none;\n  font: inherit;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n.medx-menu button:hover {\n  background: rgba(128, 138, 148, 0.18);\n}\n\n/* What's happening. It's the one section[role=region] in the sidebar; X gives\n   it no testid and its aria-label is not stable across locales. */\nhtml[data-medx-hide-trends] [data-testid=\"sidebarColumn\"] section[role=\"region\"],\n/* The frame and dividers belong to a wrapper around each panel, not the panel\n   itself \u2014 every panel reported a 0px border. Hiding the panel alone leaves an\n   empty bordered box, so the wrapper goes with it. */\nhtml[data-medx-hide-trends]\n  [data-testid=\"sidebarColumn\"] div:has(> section[role=\"region\"]),\nhtml[data-medx-hide-premium]\n  [data-testid=\"sidebarColumn\"] div:has(> aside[aria-label=\"Subscribe to Premium\"]),\nhtml[data-medx-hide-follow]\n  [data-testid=\"sidebarColumn\"] div:has(> aside[aria-label=\"Who to follow\"]) {\n  display: none !important;\n}\n\n/* The footer links, moved out of the sidebar into the corner. Offset left of\n   the Grok and chat docks, which sit about 55px square against the right\n   edge, so it can't land underneath them. */\nhtml[data-medx-footer-corner] [data-testid=\"sidebarColumn\"] nav[aria-label=\"Footer\"] {\n  position: fixed;\n  right: 96px;\n  bottom: 10px;\n  z-index: 1;\n  max-width: 280px;\n}\n\n/* With both docks hidden there is nothing to avoid, so it can sit in the\n   corner properly. */\nhtml[data-medx-hide-grok][data-medx-hide-chat]\n  [data-testid=\"sidebarColumn\"] nav[aria-label=\"Footer\"] {\n  right: 12px;\n}\n\n/* X's per-post Grok button. Identified by its label \u2014 it carries no testid. */\nhtml[data-medx-hide-grok-posts]\n  div[data-testid=\"cellInnerDiv\"] button[aria-label=\"Grok actions\"] {\n  display: none !important;\n}\n\n/* Multiple images back as a grid rather than a carousel.\n\n   Scoped hard: X uses ScrollSnap for the timeline tabs and the composer\n   toolbar as well, so matching the list by testid alone rearranged those too \u2014\n   \"For you\" and \"Following\" ended up stacked on top of each other. Every rule\n   here requires a list that actually holds photos, inside a post.\n\n   X drives the carousel with inline styles \u2014 widths, transforms and scroll\n   snapping set on the elements themselves \u2014 so these need !important to\n   outrank them. The old three-image layout put one tall image beside two\n   stacked ones; this is a plain grid, close but not a replica. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-SwipeableList\"]:has([data-testid=\"tweetPhoto\"]) {\n  overflow: visible !important;\n}\n\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has(> * [data-testid=\"tweetPhoto\"]),\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has(> [data-testid=\"tweetPhoto\"]) {\n  display: grid !important;\n  grid-template-columns: 1fr 1fr;\n  gap: 2px;\n  width: 100% !important;\n  transform: none !important;\n  overflow: visible !important;\n}\n\n/* Tiles fill their column. Measured on a four-image post: the list was 571px\n   across, so each column was ~276px \u2014 but the tiles sized themselves from\n   their content at 192px, leaving a gap between the columns and dead space\n   under short rows. Auto width was the mistake; they have to be told to fill. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > * {\n  width: 100% !important;\n  min-width: 0 !important;\n  max-width: none !important;\n  flex: none !important;\n  transform: none !important;\n  scroll-snap-align: none !important;\n}\n\n/* X sets an aspect ratio inline on the wrapper inside each tile \u2014 0.666/1 on\n   the post that prompted this \u2014 which fights the grid's own sizing. The tile\n   decides the shape; everything inside it fills. */\n/* Only the wrapper chain between the tile and its picture \u2014 the element X\n   puts an inline aspect ratio on, and the photo container under it. Applying\n   this to every descendant blew the video play button up to fill the tile. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > * > *,\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  [data-testid=\"tweetPhoto\"] {\n  aspect-ratio: auto !important;\n  width: 100% !important;\n  height: 100% !important;\n  min-width: 0 !important;\n}\n\n/* And the list's own inline negative margins, which shift it out from under\n   the post's text column and skew how wide the columns come out. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"]) {\n  margin-left: 0 !important;\n  margin-right: 0 !important;\n  padding-left: 0 !important;\n  padding-right: 0 !important;\n}\n\n/* A single image has no grid to be part of. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > *:only-child {\n  grid-column: 1 / -1;\n}\n\n/* Three images: the first takes the left column across both rows, roughly what\n   the old layout did. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"]):has(> *:nth-child(3)):not(:has(> *:nth-child(4)))\n  > *:first-child {\n  grid-row: span 2;\n}\n\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  img {\n  width: 100% !important;\n  height: 100% !important;\n  object-fit: cover;\n}\n\n/* X reserves height for the carousel assuming one item fills the width. Laid\n   out as a grid the items are half that height, and the reserved space stays\n   behind as a gap \u2014 several hundred pixels of nothing between the media and\n   whatever follows it, a quote tweet most visibly.\n\n   So the height comes off the carousel and its spacer ancestors, and the tiles\n   are squared off instead. */\n/* Every ancestor between the post and the carousel, not just the one directly\n   above it: the reserved space turned out to be an inline padding-bottom of\n   68% two levels up, on the far side of a <nav>, so a direct-child rule never\n   reached it. That percentage is how X holds room for a full-width carousel,\n   and it is exactly the gap left behind once the media is laid out as a grid. */\n/* A video carousel is built differently from a photo one: the whole thing sits\n   in an absolutely positioned <nav>, held up by a percentage padding-bottom on\n   the div above it \u2014 measured at 385px on a two-video post. A photo carousel\n   has neither, which is why only video posts showed the gap.\n\n   Both halves have to change together. Taking the padding away on its own\n   collapses the parent to nothing and the media draws over the rest of the\n   post; putting the nav back into flow on its own leaves the reserved space\n   below it. So: nav into normal flow, and the space it no longer needs\n   removed.\n\n   Note the shape of these selectors. :has() cannot contain another :has() \u2014\n   that is invalid and the whole rule is silently dropped \u2014 but it can contain\n   a descendant combinator, which is what reaches the carousel here. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  nav:has(div[data-testid=\"ScrollSnap-SwipeableList\"]) {\n  position: static !important;\n}\n\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div:has(> nav div[data-testid=\"ScrollSnap-SwipeableList\"]) {\n  padding-bottom: 0 !important;\n  height: auto !important;\n  min-height: 0 !important;\n}\n\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > * {\n  height: auto !important;\n  aspect-ratio: 1 / 1;\n}\n\n/* A lone item keeps its own shape rather than being squared off. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > *:only-child {\n  aspect-ratio: auto;\n}\n\n/* Three tiles: the tall one spans two rows, so it is twice as tall as wide. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"]):has(> *:nth-child(3)):not(:has(> *:nth-child(4)))\n  > *:first-child {\n  aspect-ratio: 1 / 2;\n}\n\n/* The arrows have nothing left to scroll. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-SwipeableList\"]:has([data-testid=\"tweetPhoto\"])\n  div[data-testid=\"ScrollSnap-prevButtonWrapper\"],\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-SwipeableList\"]:has([data-testid=\"tweetPhoto\"])\n  div[data-testid=\"ScrollSnap-nextButtonWrapper\"] {\n  display: none !important;\n}\n\n/* Section colours. Each filter section owns a colour, and a collapsed post\n   carries its section's colour as a strip down the left \u2014 so the reason a\n   post was hidden is legible before reading the label. The same values are\n   in options.css, where they mark the section headings. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"language\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"quote\"] {\n  --medx-section: #4a9dd9;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"flag\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"countryname\"] {\n  --medx-section: #d9534f;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"location\"] {\n  --medx-section: #5f8a3c;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"watch\"] {\n  --medx-section: #a86fd0;\n}\n\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"noavatar\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"signals\"] {\n  --medx-section: #c62828;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"shovel\"] {\n  --medx-section: #7a5230;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"fastreply\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"likes\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"emojirun\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"ailabel\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"hashtagonly\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"selfpromo\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"punctuation\"] {\n  --medx-section: #3fae95;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"quotemuted\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"mutedaccount\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"snoozed\"] {\n  --medx-section: #7f8fa6;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"verified\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"unverified\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"label\"] {\n  --medx-section: #5c7cfa;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"video\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"vertical\"] {\n  --medx-section: #d67ab1;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"bait\"] {\n  --medx-section: #c9a227;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"]::before,\ndiv[data-testid=\"cellInnerDiv\"][data-medx-revealed]::before {\n  border-left-color: var(--medx-section, rgba(128, 138, 148, 0.45));\n}\n\n\n/* A post kept because the poster replied to it. Deliberately quiet \u2014 it is a\n   note about why nothing happened, not a warning. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-exempt=\"answered\"] {\n  box-shadow: inset 3px 0 0 rgba(120, 160, 120, 0.55);\n}\n\n/* And the button lights up, the way a scored post does \u2014 green rather than\n   blue, since this is a reason a post stayed rather than a reason to look at\n   it. Overrides the faded state a post with no bait score would have. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-exempt]::after {\n  opacity: 0.9;\n  filter: drop-shadow(0 0 3px rgba(120, 190, 120, 0.95));\n}\n\nhtml[data-medx-badge-grey] div[data-testid=\"cellInnerDiv\"][data-medx-exempt]::after {\n  filter: grayscale(1) drop-shadow(0 0 3px rgba(120, 190, 120, 0.95));\n}\n\n/* Posting app, matching its section in the options page. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"source\"] {\n  --medx-section: #e2761b;\n}\n\n/* A background colour of your own. Applied to the column and the page behind\n   it so the two match while scrolling, and to the cells because X paints those\n   separately \u2014 without that, each post keeps its own panel colour and the new\n   one only shows in the gaps. */\nhtml[data-medx-bg],\nhtml[data-medx-bg] body,\nhtml[data-medx-bg] div[data-testid=\"primaryColumn\"],\n/* A highlighted post keeps its tint: the page colour is the backdrop, and\n   overriding the highlight with it defeated the point of highlighting. */\nhtml[data-medx-bg] div[data-testid=\"cellInnerDiv\"]:not([data-medx-watch]),\n/* Marked in content.js: every panel X had painted with its own page colour,\n   found by that colour rather than by a selector, since most of them have no\n   testid to aim at. */\nhtml[data-medx-bg] [data-medx-bg-el],\n/* A community note. It has a testid of its own, and it arrives long after the\n   page does \u2014 worth naming rather than waiting for the colour sweep. */\nhtml[data-medx-bg] [data-testid=\"birdwatch-pivot\"] {\n  background-color: var(--medx-timeline-bg) !important;\n}\n\n/* A hidden post keeps its bar's own tint rather than the page colour. */\nhtml[data-medx-bg] div[data-testid=\"cellInnerDiv\"][data-medx-hidden]::before {\n  background-color: transparent !important;\n}\n\n/* A gradient runs behind everything at once rather than repeating in each\n   panel, so the panels go transparent and the page carries it. Fixed, so it\n   stays put while the timeline scrolls over it. */\n/* With a picture as well, the picture is listed first so it sits on top and\n   the gradient shows through wherever the picture is clear. */\nhtml[data-medx-bg-gradient][data-medx-bg-image] {\n  background-image: var(--medx-bg-image),\n    linear-gradient(\n      var(--medx-timeline-gradient-angle, 180deg),\n      var(--medx-timeline-bg),\n      var(--medx-timeline-bg2)\n    ) !important;\n  background-size: var(--medx-bg-fit), cover !important;\n  background-position: var(--medx-bg-position, center), center !important;\n  background-repeat: no-repeat, no-repeat !important;\n}\n\nhtml[data-medx-bg-gradient] {\n  background-image: linear-gradient(\n    var(--medx-timeline-gradient-angle, 180deg),\n    var(--medx-timeline-bg),\n    var(--medx-timeline-bg2)\n  ) !important;\n  background-attachment: fixed !important;\n}\n\nhtml[data-medx-bg-gradient] body,\nhtml[data-medx-bg-gradient] div[data-testid=\"primaryColumn\"],\nhtml[data-medx-bg-gradient] div[data-testid=\"cellInnerDiv\"]:not([data-medx-watch]),\nhtml[data-medx-bg-gradient] [data-medx-bg-el] {\n  background-color: transparent !important;\n}\n\n/* Post text. Links and mentions set their own colour, so they keep it and the\n   change lands on the words around them.\n\n   Impact, Papyrus and Chalkduster were offered here and removed: they render\n   for a moment and then something swaps them out. getComputedStyle reports\n   our family on both the container and the inner span, at any weight, with\n   nothing set inline \u2014 so the rule is applied and winning, and whatever\n   changes the rendering afterwards is not visible to the page. Single-face\n   display fonts seem to be the common factor. Not worth re-adding without\n   understanding that.\n\n   `body` is in each selector to outrank X: it injects styled-component rules\n   as you scroll, and at equal specificity the rule that arrives later wins \u2014\n   which is why a font applied on load reverted a second afterwards. */\nhtml[data-medx-font] body div[data-testid=\"tweetText\"],\nhtml[data-medx-font] body div[data-testid=\"tweetText\"] span,\nhtml[data-medx-font] body div[data-testid=\"tweetText\"] span span {\n  font-family: var(--medx-font-family, revert) !important;\n  font-weight: var(--medx-font-weight, revert) !important;\n}\n\n/* Colour only when one has been chosen. These rules used `revert` otherwise,\n   and reverting a colour on a link hands it to the browser's own \u2014 purple once\n   visited. The views count is a link to the post's analytics, so it came out\n   lavender whenever no colour was set. */\nhtml[data-medx-font-colour] body div[data-testid=\"tweetText\"],\nhtml[data-medx-font-colour] body div[data-testid=\"tweetText\"] span,\nhtml[data-medx-font-colour] body div[data-testid=\"tweetText\"] span span {\n  color: var(--medx-font-colour) !important;\n}\n\n/* The counts under a post. X draws these in a fixed grey that can disappear\n   against a chosen background, so they follow the post text's colour. Only the\n   colour: the numbers are meant to sit quieter than the post, so their size\n   and weight are left alone.\n\n   Hover and active states still win, since X sets those on the button. */\n/* Every element in the row, not only the spans: the count sits in a div with\n   spans nested inside it, and colouring the spans alone left the div's own\n   grey showing wherever the text was not in one. */\nhtml[data-medx-font-colour] body article div[role=\"group\"],\nhtml[data-medx-font-colour] body article div[role=\"group\"] * {\n  color: var(--medx-font-colour) !important;\n}\n\n/* The whole interface, for anyone who wants the lot. Buttons and links keep\n   their own colours; this is the body text. */\nhtml[data-medx-font-all] body span,\nhtml[data-medx-font-all] body div[dir],\nhtml[data-medx-font-all] body [data-testid=\"UserName\"] span {\n  font-family: var(--medx-font-family, revert) !important;\n  font-weight: var(--medx-font-weight, revert) !important;\n}\n\nhtml[data-medx-font-all][data-medx-font-colour] div[data-testid=\"tweetText\"],\nhtml[data-medx-font-all][data-medx-font-colour] div[data-testid=\"tweetText\"] span {\n  color: var(--medx-font-colour) !important;\n}\n\n/* Names and handles. Kept separate from the post-text colour so the two can\n   differ, and so turning one on doesn't drag the other with it. */\nhtml[data-medx-font-names] body [data-testid=\"User-Name\"] span,\nhtml[data-medx-font-names] body [data-testid=\"UserName\"] span {\n  color: var(--medx-font-name-colour) !important;\n}\n\nhtml[data-medx-font-name-weight] body [data-testid=\"User-Name\"] span,\nhtml[data-medx-font-name-weight] body [data-testid=\"UserName\"] span {\n  font-weight: var(--medx-font-name-weight) !important;\n}\n\n/* An outline on names. Chrome draws the stroke centred on the glyph edge, so\n   anything past a pixel or two starts eating the letterforms \u2014 the option caps\n   accordingly. */\nhtml[data-medx-name-stroke] body [data-testid=\"User-Name\"] span,\nhtml[data-medx-name-stroke] body [data-testid=\"UserName\"] span {\n  -webkit-text-stroke: var(--medx-name-stroke) var(--medx-name-stroke-colour);\n  paint-order: stroke fill;\n}\n\n/* On the name container rather than each span: a filter applies to an element\n   and everything in it as one image, so filtering every span separately would\n   glow each word on its own. */\nhtml[data-medx-name-glow] body [data-testid=\"User-Name\"],\nhtml[data-medx-name-glow] body [data-testid=\"UserName\"] {\n  filter: var(--medx-name-glow);\n}\n\n/* X clips the name row, which slices a glow or a heavy outline flat against an\n   edge you cannot see. The clipping turned out to be four levels below the\n   name container, not on it \u2014 an unnamed div wrapping the text \u2014 so a rule for\n   direct children missed it entirely. Every descendant it is.\n\n   Only lifted when a stroke or glow is on, since the clipping is what\n   truncates long names with an ellipsis. The cost is that a very long name can\n   reach toward the timestamp rather than being cut short. */\nhtml[data-medx-name-stroke] body [data-testid=\"User-Name\"],\nhtml[data-medx-name-stroke] body [data-testid=\"User-Name\"] *,\nhtml[data-medx-name-stroke] body [data-testid=\"UserName\"],\nhtml[data-medx-name-stroke] body [data-testid=\"UserName\"] *,\nhtml[data-medx-name-glow] body [data-testid=\"User-Name\"],\nhtml[data-medx-name-glow] body [data-testid=\"User-Name\"] *,\nhtml[data-medx-name-glow] body [data-testid=\"UserName\"],\nhtml[data-medx-name-glow] body [data-testid=\"UserName\"] * {\n  overflow: visible !important;\n}\n\n/* The sidebar logo. It lives in an <h1> above the nav, not inside it \u2014 the\n   Home tab is the /home link in the nav, this one is the /home link in the\n   heading. Its own SVG is hidden and ours is masked onto the link, so the\n   link, its hit area and its behaviour are all untouched. */\nhtml[data-medx-logo] h1 a[href=\"/home\"] svg {\n  visibility: hidden;\n}\n\nhtml[data-medx-logo] h1 a[href=\"/home\"] {\n  position: relative;\n}\n\nhtml[data-medx-logo] h1 a[href=\"/home\"]::after {\n  content: \"\";\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  height: var(--medx-logo-height, 26px);\n  width: calc(var(--medx-logo-height, 26px) * var(--medx-logo-ratio));\n  transform: translate(-50%, -50%);\n  background-color: var(--medx-logo-colour);\n  -webkit-mask-image: var(--medx-logo-image);\n  mask-image: var(--medx-logo-image);\n  -webkit-mask-repeat: no-repeat;\n  mask-repeat: no-repeat;\n  -webkit-mask-size: contain;\n  mask-size: contain;\n  -webkit-mask-position: center;\n  mask-position: center;\n  pointer-events: none;\n}\n\n/* The wordmark is nearly five times as wide as it is tall, so it needs room\n   the square X logo never did. */\nhtml[data-medx-logo=\"wordmark\"] h1 a[href=\"/home\"] {\n  min-width: 140px;\n}\n\n/* A picture behind the page. On the root so it sits behind everything at once\n   and scrolls as one backdrop rather than repeating per panel \u2014 the same\n   reasoning as the gradient. */\n/* The picture is drawn over the page's own background colour, so a PNG with\n   transparency shows the chosen colour or gradient through its clear parts \u2014\n   which is the point of keeping transparency rather than flattening it. */\nhtml[data-medx-bg-image] {\n  background-image: var(--medx-bg-image) !important;\n  background-size: var(--medx-bg-fit) !important;\n  background-position: var(--medx-bg-position, center) !important;\n  background-attachment: fixed !important;\n}\n\nhtml[data-medx-bg-image=\"fit\"] {\n  background-repeat: no-repeat !important;\n}\n\nhtml[data-medx-bg-image=\"tile\"] {\n  background-repeat: repeat !important;\n}\n\nhtml[data-medx-bg-image] body,\nhtml[data-medx-bg-image] div[data-testid=\"primaryColumn\"],\nhtml[data-medx-bg-image] div[data-testid=\"cellInnerDiv\"]:not([data-medx-watch]),\nhtml[data-medx-bg-image] [data-medx-bg-el] {\n  background-color: transparent !important;\n}\n\n/* The veil. A separate fixed layer rather than a filter on the image, so it\n   darkens the picture without touching anything drawn over it. */\nhtml[data-medx-bg-image] body::before {\n  content: \"\";\n  position: fixed;\n  inset: 0;\n  z-index: 0;\n  pointer-events: none;\n  background: rgba(0, 0, 0, var(--medx-bg-dim, 0));\n}\n\n/* The veil behind posts. Last in the file and more specific than the rules\n   that clear the cells for a background, so it wins over them \u2014 those make the\n   posts see-through, and this is the deliberate exception. A highlighted post\n   keeps its own tint, as everywhere else. */\nhtml[data-medx-post-veil] body div[data-testid=\"cellInnerDiv\"]:not([data-medx-watch]),\n/* The compose box and the tab strip above the posts. These are panels X paints\n   in its own colour, already found and marked for the background, so they are\n   shaded with the posts rather than left as a clear gap at the top of the\n   column. Only the ones inside the timeline column \u2014 the sidebar and the\n   search field keep the background. */\nhtml[data-medx-post-veil] body div[data-testid=\"primaryColumn\"] [data-medx-bg-el] {\n  background-color: var(--medx-post-veil) !important;\n}\n\n/* One layer only. Panels nest \u2014 the compose box holds the strip of icons, and\n   both are marked \u2014 so a translucent veil was painted twice there and came out\n   darker than the posts around it. The outer one carries it and anything\n   inside stays clear. */\nhtml[data-medx-post-veil] body div[data-testid=\"primaryColumn\"] [data-medx-bg-el] [data-medx-bg-el] {\n  background-color: transparent !important;\n}\n\n/* The hairlines left where a hidden sidebar panel used to be. Marked in\n   content.js, since their only distinguishing feature is being a pixel tall. */\n[data-testid=\"sidebarColumn\"] [data-medx-divider] {\n  display: none !important;\n}\n\n/* The highlight row in the corner menu: a label that fills the width and a\n   colour swatch beside it, so the colour is chosen where the choice is made\n   rather than in the options page. */\n.medx-menu-row {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.medx-menu-row button {\n  flex: 1;\n  text-align: left;\n}\n\n.medx-menu-swatch {\n  flex: none;\n  width: 26px;\n  height: 22px;\n  padding: 0;\n  border: 1px solid rgba(255, 255, 255, 0.25);\n  border-radius: 4px;\n  background: none;\n  cursor: pointer;\n  margin-right: 8px;\n}\n\n/* The \"Today's News\" panel, found and marked in content.js \u2014 it has no name of\n   its own, and its surroundings are shared with the Premium box. The articles\n   are hidden as well, so they vanish at once even before the panel is found. */\n[data-testid=\"sidebarColumn\"] [data-medx-news],\nhtml[data-medx-hide-news] [data-testid^=\"news_sidebar_article_\"] {\n  display: none !important;\n}\n\n/* A moving background, played as a video. A child of <html> beside <body>,\n   fixed behind the page: below the dimming veil (z-index 0) and the page, but\n   above <html>'s own background, where a chosen colour shows through a video\n   that does not fill the window. Never takes the pointer, never takes focus. */\nhtml > video[data-medx=\"background\"] {\n  position: fixed;\n  inset: 0;\n  width: 100vw;\n  height: 100vh;\n  z-index: -1;\n  pointer-events: none;\n  border: 0;\n  background: transparent;\n}\n\n/* No painted image behind a video \u2014 the stylesheet rule for the picture is\n   cleared, and this makes sure nothing inherited paints over the layer. */\nhtml[data-medx-bg-image=\"video\"] {\n  background-image: none !important;\n}\n\n/* The expand buttons on a video or image in a post. In the photo grid a tile\n   is too small for X's toolbar; elsewhere they are simply quicker. At rest\n   one button, which opens X's own viewer; pointed at, a second slides out\n   beside it, which goes to true fullscreen.\n\n   Both are pseudo-elements \u2014 ::after the viewer, ::before the fullscreen \u2014\n   and content.js recognises a click by where it lands. On media in posts,\n   not inside X's viewer. */\n/* A positioning context for the buttons \u2014 but only in the photo grid, where\n   the grid sets each tile's size itself. Everywhere else X positions its tiles\n   absolutely inside a wrapper that gives them their shape, and forcing them to\n   relative left them with no height at all: the media collapsed and showed\n   blank. Outside the grid, X's own positioning already anchors the buttons. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]\n  [data-testid=\"tweetPhoto\"] {\n  position: relative;\n}\n\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::after,\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::before {\n  content: \"\";\n  position: absolute;\n  top: 8px;\n  width: 28px;\n  height: 28px;\n  border-radius: 50%;\n  background-color: rgba(0, 0, 0, 0.62);\n  background-position: center;\n  background-size: 14px 14px;\n  background-repeat: no-repeat;\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);\n  pointer-events: none;\n  transition: transform 120ms ease, opacity 120ms ease, background-color 120ms ease,\n    box-shadow 120ms ease;\n}\n\n/* The viewer button, in the corner, always showing. */\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::after {\n  right: 8px;\n  z-index: 4;\n  background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4'/></svg>\");\n  opacity: 0.85;\n}\n\n/* The fullscreen button, tucked behind the viewer button until pointed at. */\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::before {\n  right: 8px;\n  z-index: 3;\n  background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7'/></svg>\");\n  opacity: 0;\n  transform: translateX(0) scale(0.7);\n}\n\n/* Open: the fullscreen button slides out to the left. */\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"][data-medx-expand-hover]::before {\n  opacity: 0.85;\n  transform: translateX(-34px) scale(1);\n}\n\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"][data-medx-expand-hover]::after {\n  opacity: 1;\n}\n\n/* Whichever one the pointer is on grows and brightens, matching the MED-X\n   corner button. */\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"][data-medx-expand-hover=\"viewer\"]::after {\n  transform: scale(1.25);\n  background-color: rgba(0, 0, 0, 0.82);\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 8px rgba(255, 255, 255, 0.35);\n}\n\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"][data-medx-expand-hover=\"full\"]::before {\n  opacity: 1;\n  transform: translateX(-34px) scale(1.25);\n  background-color: rgba(0, 0, 0, 0.82);\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 8px rgba(255, 255, 255, 0.35);\n}\n\n@media (prefers-reduced-motion: reduce) {\n  div[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::after,\n  div[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::before {\n    transition: none;\n  }\n}\n\n/* Fullscreen from the expand button. Everything above makes grid tiles square\n   by cropping \u2014 right in a grid, wrong once the element fills the monitor,\n   where a portrait video came out stretched edge to edge. Here the video, or\n   the preview before it plays, is fitted whole inside the screen with black\n   beside it.\n\n   Sized against the screen rather than its own box: X holds media in wrapper\n   boxes of a fixed shape, so fitting the video inside its wrapper would still\n   have fitted it inside a square. Fixed positioning inside a fullscreen\n   element measures against the screen itself. X's controls come later in the\n   page, so they still draw on top. */\n[data-testid=\"tweetPhoto\"]:fullscreen,\n[data-testid=\"videoPlayer\"]:fullscreen {\n  background: #000 !important;\n}\n\n[data-testid=\"tweetPhoto\"]:fullscreen video,\n[data-testid=\"tweetPhoto\"]:fullscreen img,\n[data-testid=\"videoPlayer\"]:fullscreen video {\n  position: fixed !important;\n  inset: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  max-width: none !important;\n  max-height: none !important;\n  object-fit: contain !important;\n  background: #000 !important;\n  transform: none !important;\n  /* Clicks land on the player around the video rather than the video itself.\n     In our fullscreen, content.js handles play and pause there and keeps the\n     click from X \u2014 which would otherwise treat it as a click on the post's\n     media and open its viewer in the background. */\n  pointer-events: none !important;\n}\n\n/* Images in fullscreen. X draws a timeline photo as a CSS background on a div\n   and keeps the <img> beside it transparent \u2014 so the rule above fitted an\n   invisible image while the visible one stayed stretched to fill the screen.\n   The background is fitted the same way: whole, centred, black around it.\n   Fixed to the screen for the same reason as the video, since X's wrapper\n   boxes hold a fixed shape. */\n[data-testid=\"tweetPhoto\"]:fullscreen [style*=\"background-image\"] {\n  position: fixed !important;\n  inset: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  margin: 0 !important;\n  background-size: contain !important;\n  background-position: center !important;\n  background-repeat: no-repeat !important;\n  background-color: #000 !important;\n  transform: none !important;\n  pointer-events: none !important;\n}\n\n/* The MED-X entry in X's left sidebar. A copy of one of X's own nav items, so\n   size and spacing are X's; the icon is the MED-X pill drawn in the nav's text\n   colour, at the size of X's own icons. A copy keeps X's classes but not X's\n   hover behaviour, which runs in X's code, so hover is given back here. */\n/* Painted onto X's own icon element, which keeps X's size and alignment \u2014\n   so nothing here sets either. */\n.medx-nav-icon {\n  background-color: currentColor;\n  -webkit-mask: var(--medx-nav-icon) center / contain no-repeat;\n  mask: var(--medx-nav-icon) center / contain no-repeat;\n}\n\n[data-medx-nav-button] {\n  cursor: pointer;\n}\n\n[data-medx-nav-button] > div {\n  transition: background-color 0.2s;\n}\n\n[data-medx-nav-button]:hover > div,\n[data-medx-nav-button]:focus-visible > div {\n  background-color: color-mix(in srgb, currentColor 10%, transparent);\n}\n\n/* The settings, over the page. */\n#medx-settings-overlay {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483647;\n  overscroll-behavior: contain;\n  background: rgba(0, 0, 0, 0.55);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n/* The box clips the frame to rounded corners, scrollbar and all. */\n#medx-settings-overlay .medx-settings-box {\n  width: min(980px, calc(100vw - 32px));\n  height: calc(100vh - 64px);\n  border-radius: 14px;\n  overflow: hidden;\n  clip-path: inset(0 round 14px);\n}\n\n#medx-settings-overlay iframe {\n  display: block;\n  width: 100%;\n  height: 100%;\n  border: 0;\n  background: transparent;\n  color-scheme: normal;\n}\n\n/* Close, centred above the \"Filtering on\" text in the settings' header. The\n   frame is narrower than the settings page's widest layout, so the page fills\n   it with its 24px side padding, and the switch and its text sit flush right:\n   the text's middle lands about 61px in from the frame's edge. The frame's side\n   margin is the larger of 16px or half the leftover width. The header starts\n   44px down the frame, so the button fits above it. */\n#medx-settings-overlay .medx-settings-close {\n  position: absolute;\n  top: 40px;\n  right: calc(max(16px, (100vw - 980px) / 2) + 61px);\n  transform: translateX(50%);\n  padding: 6px 14px;\n  border-radius: 999px;\n  border: 1px solid rgba(255, 255, 255, 0.6);\n  background: rgba(0, 0, 0, 0.6);\n  color: #fff;\n  font: 600 14px system-ui, sans-serif;\n  cursor: pointer;\n}\n");
+GM_addStyle("/* The @font-face for \"Twemoji Country Flags\" is injected by content.js, not\n   declared here: a relative url() in a content-script stylesheet resolves\n   against the page, so ../fonts/... would be fetched from x.com \u2014 which\n   answers unknown paths with its HTML shell and a 200, giving Chrome a\n   \"failed to decode downloaded font\" rather than an honest 404. The real\n   path needs chrome.runtime.getURL(), which only exists at runtime.\n\n   The collapsed bar is a ::before pseudo-element on the cell itself, so no\n   nodes are added to X's DOM. No fixed colours either: currentColor and\n   neutral alpha work in the light, dim and lights-out themes. */\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden] > * {\n  display: none !important;\n}\n\n/* Hold Alt to see everything that's collapsed. Removed posts stay removed \u2014\n   except a thread's own post, below. */\nhtml[data-medx-peek] div[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"] > * {\n  display: revert !important;\n}\n\n/* The bar goes while peeking. Left at half opacity it sat as a coloured strip\n   above the post's own content, and being clickable it swallowed clicks meant\n   for whatever was underneath \u2014 a video wouldn't play. */\nhtml[data-medx-peek] div[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"]::before {\n  display: none;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"remove\"] {\n  display: none !important;\n}\n\n/* A thread's own post, removed outright, shows while Alt is held \u2014 the post\n   in the address bar, or the conversation's first post above a reply. A\n   removed post is still on the page, only hidden; it has no bar, so peeking\n   simply shows it. Marked in content.js; see threadAnchor. */\nhtml[data-medx-peek] div[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"remove\"][data-medx-peekable],\nhtml[data-medx-peek] div[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"remove\"][data-medx-peekable] > * {\n  display: revert !important;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"] {\n  cursor: pointer;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"]::before {\n  content: attr(data-medx-label);\n  display: block;\n  padding: 10px 16px 10px 13px;\n  border-bottom: 1px solid rgba(128, 138, 148, 0.3);\n  border-left: 3px solid rgba(128, 138, 148, 0.45);\n  font: 400 12px/1.3 \"Twemoji Country Flags\", system-ui, -apple-system,\n    \"Segoe UI\", sans-serif;\n  color: rgb(113, 118, 123);\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"]:hover::before {\n  background: rgba(128, 138, 148, 0.08);\n  color: rgb(139, 146, 153);\n}\n\n/* Observation mode: a score badge in the corner, hiding nothing. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-score] {\n  position: relative;\n}\n\n/* The logo button. No text beside it \u2014 the score and what made it up live in\n   the menu, where there is room to read them. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-score]::after {\n  content: \"\";\n  position: absolute;\n  bottom: 8px;\n  left: 10px;\n  z-index: 2;\n  width: 22px;\n  height: 22px;\n  background-repeat: no-repeat;\n  background-position: center;\n  /* Filling the box exactly, so the artwork and any glow share one circle. */\n  background-size: 100% 100%;\n  /* Clickable: pseudo-elements don't fire events themselves \u2014 the click lands\n     on the cell and is hit-tested against this box, the same trick the\n     collapsed bar uses. */\n  pointer-events: auto;\n  cursor: pointer;\n  opacity: 0.85;\n  transition: transform 120ms ease, opacity 120ms ease;\n}\n\n/* Hover is driven by an attribute rather than :hover \u2014 CSS cannot hover a\n   pseudo-element, and hovering the cell would grow the button whenever the\n   pointer was anywhere in the post. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-badge-hover]::after {\n  transform: scale(1.25);\n  opacity: 1;\n}\n\n@media (prefers-reduced-motion: reduce) {\n  div[data-testid=\"cellInnerDiv\"][data-medx-score]::after {\n    transition: none;\n  }\n}\n\n/* Anything that scored gets a glow, so a flagged post is visible without\n   opening the menu. Over the threshold it burns brighter.\n\n   drop-shadow rather than box-shadow: box-shadow traces the element's box,\n   which is square and slightly larger than the round artwork inside it, so the\n   halo sat off to one side. drop-shadow is built from the image's own alpha,\n   so it follows the circle exactly. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-score]:not([data-medx-zero])::after {\n  filter: drop-shadow(0 0 3px rgba(90, 170, 255, 0.9));\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-over]::after {\n  filter: drop-shadow(0 0 5px rgba(90, 170, 255, 1))\n    drop-shadow(0 0 9px rgba(90, 170, 255, 0.6));\n}\n\n/* Greyscale, for anyone who'd rather the timeline stayed monochrome. Applied\n   to the artwork through the same filter the glow uses, so the two compose\n   rather than one overriding the other. */\nhtml[data-medx-badge-grey] div[data-testid=\"cellInnerDiv\"][data-medx-score]::after {\n  filter: grayscale(1);\n}\n\nhtml[data-medx-badge-grey]\n  div[data-testid=\"cellInnerDiv\"][data-medx-score]:not([data-medx-zero])::after {\n  filter: grayscale(1) drop-shadow(0 0 3px rgba(90, 170, 255, 0.9));\n}\n\nhtml[data-medx-badge-grey] div[data-testid=\"cellInnerDiv\"][data-medx-over]::after {\n  filter: grayscale(1) drop-shadow(0 0 5px rgba(90, 170, 255, 1))\n    drop-shadow(0 0 9px rgba(90, 170, 255, 0.6));\n}\n\n/* Nothing scored: still there to click, just quiet about it. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-zero]::after {\n  opacity: 0.3;\n}\n\n/* X dropped Twemoji, so flags now render with the system font \u2014 and Windows\n   has no country flag glyphs, showing \"PR\" instead of a Puerto Rican flag.\n   Our bundled font is unicode-range'd to flag codepoints only, so listing it\n   first pulls flags from it and leaves every other character alone.\n\n   The rest of the stack comes from --medx-name-font, which content.js reads\n   off X's own post text at runtime. Hardcoding X's font stack here would mean\n   silently restyling every display name the day they rename TwitterChirp; the\n   literals below are only a fallback for before the probe has run. */\nhtml[data-medx-flagfont] div[data-testid=\"User-Name\"],\nhtml[data-medx-flagfont] div[data-testid=\"User-Name\"] span,\nhtml[data-medx-flagfont] div[data-testid=\"UserName\"],\nhtml[data-medx-flagfont] div[data-testid=\"UserName\"] span,\nhtml[data-medx-flagfont] div[data-testid=\"UserDescription\"],\nhtml[data-medx-flagfont] div[data-testid=\"UserDescription\"] span {\n  font-family: \"Twemoji Country Flags\",\n    var(\n      --medx-name-font,\n      TwitterChirp,\n      -apple-system,\n      BlinkMacSystemFont,\n      \"Segoe UI\",\n      Roboto,\n      Helvetica,\n      Arial,\n      sans-serif\n    ) !important;\n}\n\n/* A post the user revealed. Deliberately quieter than the collapsed bar: it's\n   a reminder, not a control, and the post itself is the thing being read. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-revealed]::before {\n  content: attr(data-medx-revealed-label);\n  display: block;\n  padding: 7px 16px 5px 13px;\n  border-left: 3px solid rgba(128, 138, 148, 0.35);\n  font: 400 12px/1.3 \"Twemoji Country Flags\", system-ui, -apple-system,\n    \"Segoe UI\", sans-serif;\n  color: rgb(113, 118, 123);\n  opacity: 0.75;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-revealed]:hover::before {\n  opacity: 1;\n  background: rgba(128, 138, 148, 0.08);\n}\n\n/* The matched text, painted via the CSS Custom Highlight API \u2014 no <mark>\n   elements, so nothing is inserted into X's DOM. Only a few properties are\n   allowed on ::highlight; background-color and colour are among them. */\n::highlight(medx-bait) {\n  background-color: rgba(200, 130, 20, 0.3);\n  text-decoration: underline;\n  text-decoration-color: rgba(200, 130, 20, 0.85);\n  text-decoration-thickness: 1px;\n  text-underline-offset: 2px;\n}\n\n/* X's \"Show N posts\" bar at the top of a stale timeline. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-bar] {\n  display: none !important;\n}\n\n/* Watched posts. The tint and the ::highlight colour are generated per term by\n   content.js, since the colour is arbitrary \u2014 see refreshWatchStyles(). Only\n   the shared shape lives here. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-watch] {\n  background-color: rgba(200, 130, 20, 0.11);\n}\n\n\n/* Sidebar widgets. Toggled by attributes on <html> rather than per-element, so\n   there's nothing to re-apply as X re-renders the sidebar. */\nhtml[data-medx-hide-follow] aside[aria-label=\"Who to follow\"],\nhtml[data-medx-hide-follow] aside[role=\"complementary\"][aria-label*=\"follow\" i] {\n  display: none !important;\n}\n\nhtml[data-medx-hide-premium] aside[aria-label=\"Subscribe to Premium\"],\nhtml[data-medx-hide-premium] aside[role=\"complementary\"][aria-label*=\"Premium\" i] {\n  display: none !important;\n}\n\n/* The suggestions beside a thread. Matched loosely as well as exactly, since\n   X has called this both \"Relevant people\" and \"People in this conversation\"\n   at different times. */\nhtml[data-medx-hide-relevant] aside[aria-label=\"Relevant people\"],\nhtml[data-medx-hide-relevant] aside[role=\"complementary\"][aria-label*=\"relevant\" i],\nhtml[data-medx-hide-relevant] aside[role=\"complementary\"][aria-label*=\"people\" i] {\n  display: none !important;\n}\n\nhtml[data-medx-hide-relevant]\n  [data-testid=\"sidebarColumn\"] div:has(> aside[aria-label*=\"people\" i]) {\n  display: none !important;\n}\n\n/* The Grok and chat docks: absolutely positioned roots in the bottom-right\n   corner, each with its own testid. */\nhtml[data-medx-hide-grok] [data-testid=\"GrokDrawer\"] {\n  display: none !important;\n}\n\nhtml[data-medx-hide-chat] [data-testid=\"chat-drawer-root\"] {\n  display: none !important;\n}\n\n/* A post whose video carries a moving corner watermark. Marked rather than\n   hidden: detection needs playback, so the post has already been seen. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-watermark] {\n  box-shadow: inset 3px 0 0 rgba(255, 90, 160, 0.9);\n}\n\n/* \"Account based in\" on a profile. A pseudo-element on the name block, so\n   nothing is inserted into markup React owns. */\n[data-testid=\"HoverCard\"][data-medx-based-in]::after,\n[data-testid=\"UserName\"][data-medx-based-in]::after {\n  content: \"Account based in \" attr(data-medx-based-in);\n  display: block;\n  margin: 4px 16px 12px;\n  font-size: 13px;\n  font-weight: 400;\n  color: rgb(113, 118, 123);\n}\n\n/* Left sidebar entries. Both the testid and the href are matched where a\n   testid exists: the testid is the more stable of the two, and the href\n   catches the entries X never gave one. Scoped to nav so a link to the same\n   place elsewhere on the page is untouched.\n\n   Money has no testid: X draws it as <a href=\"/i/money\" aria-label=\"Money\">,\n   read off the page the day it launched. Matched by the address, which stays\n   the same whatever language X is in. */\nhtml[data-medx-nav-explore] nav a[data-testid=\"AppTabBar_Explore_Link\"],\nhtml[data-medx-nav-explore] nav a[href=\"/explore\"],\nhtml[data-medx-nav-follow] nav a[data-testid=\"AppTabBar_Follow_Link\"],\nhtml[data-medx-nav-follow] nav a[href=\"/i/connect_people\"],\nhtml[data-medx-nav-grok] nav a[href=\"/i/grok\"],\nhtml[data-medx-nav-creator] nav a[href=\"/i/jf/creators/studio\"],\nhtml[data-medx-nav-premium] nav a[data-testid=\"premium-signup-tab\"],\nhtml[data-medx-nav-premium] nav a[href=\"/i/premium_sign_up\"],\nhtml[data-medx-nav-money] nav a[href=\"/i/money\"] {\n  display: none !important;\n}\n\n/* The badge menu. Appended to document.body rather than into a post, so it\n   sits outside the tree React manages and can hold real buttons. */\n.medx-menu {\n  position: fixed;\n  z-index: 2147483000;\n  min-width: 210px;\n  max-width: 280px;\n  padding: 6px;\n  border: 1px solid rgba(128, 138, 148, 0.35);\n  border-radius: 10px;\n  background: rgb(21, 24, 28);\n  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);\n  font: 400 13px/1.45 system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  color: rgb(231, 233, 234);\n}\n\n@media (prefers-color-scheme: light) {\n  .medx-menu {\n    background: #fff;\n    color: #0f1419;\n    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);\n  }\n}\n\n.medx-menu-title {\n  padding: 6px 10px 4px;\n  font-weight: 600;\n}\n\n.medx-menu-note {\n  padding: 0 10px 8px;\n  color: rgb(113, 118, 123);\n  font-size: 12px;\n  border-bottom: 1px solid rgba(128, 138, 148, 0.25);\n  margin-bottom: 4px;\n}\n\n.medx-menu button {\n  display: block;\n  width: 100%;\n  padding: 7px 10px;\n  border: 0;\n  border-radius: 6px;\n  background: none;\n  font: inherit;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n.medx-menu button:hover {\n  background: rgba(128, 138, 148, 0.18);\n}\n\n/* What's happening. It's the one section[role=region] in the sidebar; X gives\n   it no testid and its aria-label is not stable across locales. */\nhtml[data-medx-hide-trends] [data-testid=\"sidebarColumn\"] section[role=\"region\"],\n/* The frame and dividers belong to a wrapper around each panel, not the panel\n   itself \u2014 every panel reported a 0px border. Hiding the panel alone leaves an\n   empty bordered box, so the wrapper goes with it. */\nhtml[data-medx-hide-trends]\n  [data-testid=\"sidebarColumn\"] div:has(> section[role=\"region\"]),\nhtml[data-medx-hide-premium]\n  [data-testid=\"sidebarColumn\"] div:has(> aside[aria-label=\"Subscribe to Premium\"]),\nhtml[data-medx-hide-follow]\n  [data-testid=\"sidebarColumn\"] div:has(> aside[aria-label=\"Who to follow\"]) {\n  display: none !important;\n}\n\n/* The footer links, moved out of the sidebar into the corner. Offset left of\n   the Grok and chat docks, which sit about 55px square against the right\n   edge, so it can't land underneath them. */\nhtml[data-medx-footer-corner] [data-testid=\"sidebarColumn\"] nav[aria-label=\"Footer\"] {\n  position: fixed;\n  right: 96px;\n  bottom: 10px;\n  z-index: 1;\n  max-width: 280px;\n}\n\n/* The footer links off the page altogether \u2014 whether or not they'd also\n   been moved to the corner. */\nhtml[data-medx-hide-footer] [data-testid=\"sidebarColumn\"] nav[aria-label=\"Footer\"] {\n  display: none !important;\n}\n\n/* With both docks hidden there is nothing to avoid, so it can sit in the\n   corner properly. */\nhtml[data-medx-hide-grok][data-medx-hide-chat]\n  [data-testid=\"sidebarColumn\"] nav[aria-label=\"Footer\"] {\n  right: 12px;\n}\n\n/* X's per-post Grok button. Identified by its label \u2014 it carries no testid. */\nhtml[data-medx-hide-grok-posts]\n  div[data-testid=\"cellInnerDiv\"] button[aria-label=\"Grok actions\"] {\n  display: none !important;\n}\n\n/* Multiple images back as a grid rather than a carousel.\n\n   Scoped hard: X uses ScrollSnap for the timeline tabs and the composer\n   toolbar as well, so matching the list by testid alone rearranged those too \u2014\n   \"For you\" and \"Following\" ended up stacked on top of each other. Every rule\n   here requires a list that actually holds photos, inside a post.\n\n   X drives the carousel with inline styles \u2014 widths, transforms and scroll\n   snapping set on the elements themselves \u2014 so these need !important to\n   outrank them. The old three-image layout put one tall image beside two\n   stacked ones; this is a plain grid, close but not a replica. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-SwipeableList\"]:has([data-testid=\"tweetPhoto\"]) {\n  overflow: visible !important;\n}\n\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has(> * [data-testid=\"tweetPhoto\"]),\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has(> [data-testid=\"tweetPhoto\"]) {\n  display: grid !important;\n  grid-template-columns: 1fr 1fr;\n  gap: 2px;\n  width: 100% !important;\n  transform: none !important;\n  overflow: visible !important;\n}\n\n/* Tiles fill their column. Measured on a four-image post: the list was 571px\n   across, so each column was ~276px \u2014 but the tiles sized themselves from\n   their content at 192px, leaving a gap between the columns and dead space\n   under short rows. Auto width was the mistake; they have to be told to fill. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > * {\n  width: 100% !important;\n  min-width: 0 !important;\n  max-width: none !important;\n  flex: none !important;\n  transform: none !important;\n  scroll-snap-align: none !important;\n}\n\n/* X sets an aspect ratio inline on the wrapper inside each tile \u2014 0.666/1 on\n   the post that prompted this \u2014 which fights the grid's own sizing. The tile\n   decides the shape; everything inside it fills. */\n/* Only the wrapper chain between the tile and its picture \u2014 the element X\n   puts an inline aspect ratio on, and the photo container under it. Applying\n   this to every descendant blew the video play button up to fill the tile. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > * > *,\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  [data-testid=\"tweetPhoto\"] {\n  aspect-ratio: auto !important;\n  width: 100% !important;\n  height: 100% !important;\n  min-width: 0 !important;\n}\n\n/* And the list's own inline negative margins, which shift it out from under\n   the post's text column and skew how wide the columns come out. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"]) {\n  margin-left: 0 !important;\n  margin-right: 0 !important;\n  padding-left: 0 !important;\n  padding-right: 0 !important;\n}\n\n/* A single image has no grid to be part of. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > *:only-child {\n  grid-column: 1 / -1;\n}\n\n/* Three images: the first takes the left column across both rows, roughly what\n   the old layout did. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"]):has(> *:nth-child(3)):not(:has(> *:nth-child(4)))\n  > *:first-child {\n  grid-row: span 2;\n}\n\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  img {\n  width: 100% !important;\n  height: 100% !important;\n  object-fit: cover;\n}\n\n/* X reserves height for the carousel assuming one item fills the width. Laid\n   out as a grid the items are half that height, and the reserved space stays\n   behind as a gap \u2014 several hundred pixels of nothing between the media and\n   whatever follows it, a quote tweet most visibly.\n\n   So the height comes off the carousel and its spacer ancestors, and the tiles\n   are squared off instead. */\n/* Every ancestor between the post and the carousel, not just the one directly\n   above it: the reserved space turned out to be an inline padding-bottom of\n   68% two levels up, on the far side of a <nav>, so a direct-child rule never\n   reached it. That percentage is how X holds room for a full-width carousel,\n   and it is exactly the gap left behind once the media is laid out as a grid. */\n/* A video carousel is built differently from a photo one: the whole thing sits\n   in an absolutely positioned <nav>, held up by a percentage padding-bottom on\n   the div above it \u2014 measured at 385px on a two-video post. A photo carousel\n   has neither, which is why only video posts showed the gap.\n\n   Both halves have to change together. Taking the padding away on its own\n   collapses the parent to nothing and the media draws over the rest of the\n   post; putting the nav back into flow on its own leaves the reserved space\n   below it. So: nav into normal flow, and the space it no longer needs\n   removed.\n\n   Note the shape of these selectors. :has() cannot contain another :has() \u2014\n   that is invalid and the whole rule is silently dropped \u2014 but it can contain\n   a descendant combinator, which is what reaches the carousel here. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  nav:has(div[data-testid=\"ScrollSnap-SwipeableList\"]) {\n  position: static !important;\n}\n\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div:has(> nav div[data-testid=\"ScrollSnap-SwipeableList\"]) {\n  padding-bottom: 0 !important;\n  height: auto !important;\n  min-height: 0 !important;\n}\n\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > * {\n  height: auto !important;\n  aspect-ratio: 1 / 1;\n}\n\n/* A lone item keeps its own shape rather than being squared off. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"])\n  > *:only-child {\n  aspect-ratio: auto;\n}\n\n/* Three tiles: the tall one spans two rows, so it is twice as tall as wide. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]:has([data-testid=\"tweetPhoto\"]):has(> *:nth-child(3)):not(:has(> *:nth-child(4)))\n  > *:first-child {\n  aspect-ratio: 1 / 2;\n}\n\n/* The arrows have nothing left to scroll. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-SwipeableList\"]:has([data-testid=\"tweetPhoto\"])\n  div[data-testid=\"ScrollSnap-prevButtonWrapper\"],\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-SwipeableList\"]:has([data-testid=\"tweetPhoto\"])\n  div[data-testid=\"ScrollSnap-nextButtonWrapper\"] {\n  display: none !important;\n}\n\n/* Section colours. Each filter section owns a colour, and a collapsed post\n   carries its section's colour as a strip down the left \u2014 so the reason a\n   post was hidden is legible before reading the label. The same values are\n   in options.css, where they mark the section headings. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"language\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"quote\"] {\n  --medx-section: #4a9dd9;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"flag\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"countryname\"] {\n  --medx-section: #d9534f;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"location\"] {\n  --medx-section: #5f8a3c;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"watch\"] {\n  --medx-section: #a86fd0;\n}\n\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"noavatar\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"signals\"] {\n  --medx-section: #c62828;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"shovel\"] {\n  --medx-section: #7a5230;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"fastreply\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"likes\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"emojirun\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"ailabel\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"hashtagonly\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"selfpromo\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"punctuation\"] {\n  --medx-section: #3fae95;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"quotemuted\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"mutedaccount\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"snoozed\"] {\n  --medx-section: #7f8fa6;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"verified\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"unverified\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"label\"] {\n  --medx-section: #5c7cfa;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"video\"],\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"vertical\"] {\n  --medx-section: #d67ab1;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"bait\"] {\n  --medx-section: #c9a227;\n}\n\ndiv[data-testid=\"cellInnerDiv\"][data-medx-hidden=\"collapse\"]::before,\ndiv[data-testid=\"cellInnerDiv\"][data-medx-revealed]::before {\n  border-left-color: var(--medx-section, rgba(128, 138, 148, 0.45));\n}\n\n\n/* A post kept because the poster replied to it. Deliberately quiet \u2014 it is a\n   note about why nothing happened, not a warning. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-exempt=\"answered\"] {\n  box-shadow: inset 3px 0 0 rgba(120, 160, 120, 0.55);\n}\n\n/* And the button lights up, the way a scored post does \u2014 green rather than\n   blue, since this is a reason a post stayed rather than a reason to look at\n   it. Overrides the faded state a post with no bait score would have. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-exempt]::after {\n  opacity: 0.9;\n  filter: drop-shadow(0 0 3px rgba(120, 190, 120, 0.95));\n}\n\nhtml[data-medx-badge-grey] div[data-testid=\"cellInnerDiv\"][data-medx-exempt]::after {\n  filter: grayscale(1) drop-shadow(0 0 3px rgba(120, 190, 120, 0.95));\n}\n\n/* Posting app, matching its section in the options page. */\ndiv[data-testid=\"cellInnerDiv\"][data-medx-reason=\"source\"] {\n  --medx-section: #e2761b;\n}\n\n/* A background colour of your own. Applied to the column and the page behind\n   it so the two match while scrolling, and to the cells because X paints those\n   separately \u2014 without that, each post keeps its own panel colour and the new\n   one only shows in the gaps. */\nhtml[data-medx-bg],\nhtml[data-medx-bg] body,\nhtml[data-medx-bg] div[data-testid=\"primaryColumn\"],\n/* A highlighted post keeps its tint: the page colour is the backdrop, and\n   overriding the highlight with it defeated the point of highlighting. */\nhtml[data-medx-bg] div[data-testid=\"cellInnerDiv\"]:not([data-medx-watch]),\n/* Marked in content.js: every panel X had painted with its own page colour,\n   found by that colour rather than by a selector, since most of them have no\n   testid to aim at. */\nhtml[data-medx-bg] [data-medx-bg-el],\n/* A community note. It has a testid of its own, and it arrives long after the\n   page does \u2014 worth naming rather than waiting for the colour sweep. */\nhtml[data-medx-bg] [data-testid=\"birdwatch-pivot\"] {\n  background-color: var(--medx-timeline-bg) !important;\n}\n\n/* A hidden post keeps its bar's own tint rather than the page colour. */\nhtml[data-medx-bg] div[data-testid=\"cellInnerDiv\"][data-medx-hidden]::before {\n  background-color: transparent !important;\n}\n\n/* A gradient runs behind everything at once rather than repeating in each\n   panel, so the panels go transparent and the page carries it. Fixed, so it\n   stays put while the timeline scrolls over it. */\n/* With a picture as well, the picture is listed first so it sits on top and\n   the gradient shows through wherever the picture is clear. */\nhtml[data-medx-bg-gradient][data-medx-bg-image] {\n  background-image: var(--medx-bg-image),\n    linear-gradient(\n      var(--medx-timeline-gradient-angle, 180deg),\n      var(--medx-timeline-bg),\n      var(--medx-timeline-bg2)\n    ) !important;\n  background-size: var(--medx-bg-fit), cover !important;\n  background-position: var(--medx-bg-position, center), center !important;\n  background-repeat: no-repeat, no-repeat !important;\n}\n\nhtml[data-medx-bg-gradient] {\n  background-image: linear-gradient(\n    var(--medx-timeline-gradient-angle, 180deg),\n    var(--medx-timeline-bg),\n    var(--medx-timeline-bg2)\n  ) !important;\n  background-attachment: fixed !important;\n}\n\nhtml[data-medx-bg-gradient] body,\nhtml[data-medx-bg-gradient] div[data-testid=\"primaryColumn\"],\nhtml[data-medx-bg-gradient] div[data-testid=\"cellInnerDiv\"]:not([data-medx-watch]),\nhtml[data-medx-bg-gradient] [data-medx-bg-el] {\n  background-color: transparent !important;\n}\n\n/* Post text. Links and mentions set their own colour, so they keep it and the\n   change lands on the words around them.\n\n   Impact, Papyrus and Chalkduster were offered here and removed: they render\n   for a moment and then something swaps them out. getComputedStyle reports\n   our family on both the container and the inner span, at any weight, with\n   nothing set inline \u2014 so the rule is applied and winning, and whatever\n   changes the rendering afterwards is not visible to the page. Single-face\n   display fonts seem to be the common factor. Not worth re-adding without\n   understanding that.\n\n   `body` is in each selector to outrank X: it injects styled-component rules\n   as you scroll, and at equal specificity the rule that arrives later wins \u2014\n   which is why a font applied on load reverted a second afterwards. */\nhtml[data-medx-font] body div[data-testid=\"tweetText\"],\nhtml[data-medx-font] body div[data-testid=\"tweetText\"] span,\nhtml[data-medx-font] body div[data-testid=\"tweetText\"] span span {\n  font-family: var(--medx-font-family, revert) !important;\n  font-weight: var(--medx-font-weight, revert) !important;\n}\n\n/* Colour only when one has been chosen. These rules used `revert` otherwise,\n   and reverting a colour on a link hands it to the browser's own \u2014 purple once\n   visited. The views count is a link to the post's analytics, so it came out\n   lavender whenever no colour was set. */\nhtml[data-medx-font-colour] body div[data-testid=\"tweetText\"],\nhtml[data-medx-font-colour] body div[data-testid=\"tweetText\"] span,\nhtml[data-medx-font-colour] body div[data-testid=\"tweetText\"] span span {\n  color: var(--medx-font-colour) !important;\n}\n\n/* The counts under a post. X draws these in a fixed grey that can disappear\n   against a chosen background, so they follow the post text's colour. Only the\n   colour: the numbers are meant to sit quieter than the post, so their size\n   and weight are left alone.\n\n   Hover and active states still win, since X sets those on the button. */\n/* Every element in the row, not only the spans: the count sits in a div with\n   spans nested inside it, and colouring the spans alone left the div's own\n   grey showing wherever the text was not in one. */\nhtml[data-medx-font-colour] body article div[role=\"group\"],\nhtml[data-medx-font-colour] body article div[role=\"group\"] * {\n  color: var(--medx-font-colour) !important;\n}\n\n/* The whole interface, for anyone who wants the lot. Buttons and links keep\n   their own colours; this is the body text. */\nhtml[data-medx-font-all] body span,\nhtml[data-medx-font-all] body div[dir],\nhtml[data-medx-font-all] body [data-testid=\"UserName\"] span {\n  font-family: var(--medx-font-family, revert) !important;\n  font-weight: var(--medx-font-weight, revert) !important;\n}\n\nhtml[data-medx-font-all][data-medx-font-colour] div[data-testid=\"tweetText\"],\nhtml[data-medx-font-all][data-medx-font-colour] div[data-testid=\"tweetText\"] span {\n  color: var(--medx-font-colour) !important;\n}\n\n/* Names and handles. Kept separate from the post-text colour so the two can\n   differ, and so turning one on doesn't drag the other with it. */\nhtml[data-medx-font-names] body [data-testid=\"User-Name\"] span,\nhtml[data-medx-font-names] body [data-testid=\"UserName\"] span {\n  color: var(--medx-font-name-colour) !important;\n}\n\nhtml[data-medx-font-name-weight] body [data-testid=\"User-Name\"] span,\nhtml[data-medx-font-name-weight] body [data-testid=\"UserName\"] span {\n  font-weight: var(--medx-font-name-weight) !important;\n}\n\n/* An outline on names. Chrome draws the stroke centred on the glyph edge, so\n   anything past a pixel or two starts eating the letterforms \u2014 the option caps\n   accordingly. */\nhtml[data-medx-name-stroke] body [data-testid=\"User-Name\"] span,\nhtml[data-medx-name-stroke] body [data-testid=\"UserName\"] span {\n  -webkit-text-stroke: var(--medx-name-stroke) var(--medx-name-stroke-colour);\n  paint-order: stroke fill;\n}\n\n/* On the name container rather than each span: a filter applies to an element\n   and everything in it as one image, so filtering every span separately would\n   glow each word on its own. */\nhtml[data-medx-name-glow] body [data-testid=\"User-Name\"],\nhtml[data-medx-name-glow] body [data-testid=\"UserName\"] {\n  filter: var(--medx-name-glow);\n}\n\n/* X clips the name row, which slices a glow or a heavy outline flat against an\n   edge you cannot see. The clipping turned out to be four levels below the\n   name container, not on it \u2014 an unnamed div wrapping the text \u2014 so a rule for\n   direct children missed it entirely. Every descendant it is.\n\n   Only lifted when a stroke or glow is on, since the clipping is what\n   truncates long names with an ellipsis. The cost is that a very long name can\n   reach toward the timestamp rather than being cut short. */\nhtml[data-medx-name-stroke] body [data-testid=\"User-Name\"],\nhtml[data-medx-name-stroke] body [data-testid=\"User-Name\"] *,\nhtml[data-medx-name-stroke] body [data-testid=\"UserName\"],\nhtml[data-medx-name-stroke] body [data-testid=\"UserName\"] *,\nhtml[data-medx-name-glow] body [data-testid=\"User-Name\"],\nhtml[data-medx-name-glow] body [data-testid=\"User-Name\"] *,\nhtml[data-medx-name-glow] body [data-testid=\"UserName\"],\nhtml[data-medx-name-glow] body [data-testid=\"UserName\"] * {\n  overflow: visible !important;\n}\n\n/* The sidebar logo. It lives in an <h1> above the nav, not inside it \u2014 the\n   Home tab is the /home link in the nav, this one is the /home link in the\n   heading. Its own SVG is hidden and ours is masked onto the link, so the\n   link, its hit area and its behaviour are all untouched. */\nhtml[data-medx-logo] h1 a[href=\"/home\"] svg {\n  visibility: hidden;\n}\n\nhtml[data-medx-logo] h1 a[href=\"/home\"] {\n  position: relative;\n}\n\nhtml[data-medx-logo] h1 a[href=\"/home\"]::after {\n  content: \"\";\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  height: var(--medx-logo-height, 26px);\n  width: calc(var(--medx-logo-height, 26px) * var(--medx-logo-ratio));\n  transform: translate(-50%, -50%);\n  background-color: var(--medx-logo-colour);\n  -webkit-mask-image: var(--medx-logo-image);\n  mask-image: var(--medx-logo-image);\n  -webkit-mask-repeat: no-repeat;\n  mask-repeat: no-repeat;\n  -webkit-mask-size: contain;\n  mask-size: contain;\n  -webkit-mask-position: center;\n  mask-position: center;\n  pointer-events: none;\n}\n\n/* The wordmark is nearly five times as wide as it is tall, so it needs room\n   the square X logo never did. */\nhtml[data-medx-logo=\"wordmark\"] h1 a[href=\"/home\"] {\n  min-width: 140px;\n}\n\n/* A picture behind the page. On the root so it sits behind everything at once\n   and scrolls as one backdrop rather than repeating per panel \u2014 the same\n   reasoning as the gradient. */\n/* The picture is drawn over the page's own background colour, so a PNG with\n   transparency shows the chosen colour or gradient through its clear parts \u2014\n   which is the point of keeping transparency rather than flattening it. */\nhtml[data-medx-bg-image] {\n  background-image: var(--medx-bg-image) !important;\n  background-size: var(--medx-bg-fit) !important;\n  background-position: var(--medx-bg-position, center) !important;\n  background-attachment: fixed !important;\n}\n\nhtml[data-medx-bg-image=\"fit\"] {\n  background-repeat: no-repeat !important;\n}\n\nhtml[data-medx-bg-image=\"tile\"] {\n  background-repeat: repeat !important;\n}\n\n/* Two pictures, independent of each other. The first is drawn exactly as it\n   is alone \u2014 its own fit, anchor and size, set from content.js as for a single\n   picture \u2014 and the second has its own of each. Each is dimmed by a dark layer\n   laid exactly over it, listed just before it so it sits on top. The first\n   picture is listed first, so where they overlap it's in front. */\nhtml[data-medx-bg-image=\"pair\"] {\n  background-image: linear-gradient(rgba(0, 0, 0, var(--medx-bg-dim1, 0)), rgba(0, 0, 0, var(--medx-bg-dim1, 0))),\n    var(--medx-bg-image),\n    linear-gradient(rgba(0, 0, 0, var(--medx-bg-dim2, 0)), rgba(0, 0, 0, var(--medx-bg-dim2, 0))),\n    var(--medx-bg-image2) !important;\n  background-size: var(--medx-bg-dimsize1, 0px 0px), var(--medx-bg-fit),\n    var(--medx-bg-dimsize2, 0px 0px), var(--medx-bg-fit2) !important;\n  background-position: var(--medx-bg-position, center), var(--medx-bg-position, center),\n    var(--medx-bg-position2, left center), var(--medx-bg-position2, left center) !important;\n  background-repeat: no-repeat, var(--medx-bg-repeat1, no-repeat),\n    no-repeat, var(--medx-bg-repeat2, no-repeat) !important;\n}\n\n/* With a gradient too, it fills behind both pictures. */\nhtml[data-medx-bg-gradient][data-medx-bg-image=\"pair\"] {\n  background-image: linear-gradient(rgba(0, 0, 0, var(--medx-bg-dim1, 0)), rgba(0, 0, 0, var(--medx-bg-dim1, 0))),\n    var(--medx-bg-image),\n    linear-gradient(rgba(0, 0, 0, var(--medx-bg-dim2, 0)), rgba(0, 0, 0, var(--medx-bg-dim2, 0))),\n    var(--medx-bg-image2),\n    linear-gradient(\n      var(--medx-timeline-gradient-angle, 180deg),\n      var(--medx-timeline-bg),\n      var(--medx-timeline-bg2)\n    ) !important;\n  background-size: var(--medx-bg-dimsize1, 0px 0px), var(--medx-bg-fit),\n    var(--medx-bg-dimsize2, 0px 0px), var(--medx-bg-fit2), cover !important;\n  background-position: var(--medx-bg-position, center), var(--medx-bg-position, center),\n    var(--medx-bg-position2, left center), var(--medx-bg-position2, left center), center !important;\n  background-repeat: no-repeat, var(--medx-bg-repeat1, no-repeat),\n    no-repeat, var(--medx-bg-repeat2, no-repeat), no-repeat !important;\n}\n\n/* The whole-page veil stands down for a pair: each picture has its own dim,\n   and the colour between them stays as chosen. */\nhtml[data-medx-bg-image=\"pair\"] body::before {\n  background: transparent !important;\n}\n\nhtml[data-medx-bg-image] body,\nhtml[data-medx-bg-image] div[data-testid=\"primaryColumn\"],\nhtml[data-medx-bg-image] div[data-testid=\"cellInnerDiv\"]:not([data-medx-watch]),\nhtml[data-medx-bg-image] [data-medx-bg-el] {\n  background-color: transparent !important;\n}\n\n/* The veil. A separate fixed layer rather than a filter on the image, so it\n   darkens the picture without touching anything drawn over it. */\nhtml[data-medx-bg-image] body::before {\n  content: \"\";\n  position: fixed;\n  inset: 0;\n  z-index: 0;\n  pointer-events: none;\n  background: rgba(0, 0, 0, var(--medx-bg-dim, 0));\n}\n\n/* The veil behind posts. Last in the file and more specific than the rules\n   that clear the cells for a background, so it wins over them \u2014 those make the\n   posts see-through, and this is the deliberate exception. A highlighted post\n   keeps its own tint, as everywhere else. */\nhtml[data-medx-post-veil] body div[data-testid=\"cellInnerDiv\"]:not([data-medx-watch]),\n/* The compose box and the tab strip above the posts. These are panels X paints\n   in its own colour, already found and marked for the background, so they are\n   shaded with the posts rather than left as a clear gap at the top of the\n   column. Only the ones inside the timeline column \u2014 the sidebar and the\n   search field keep the background. */\nhtml[data-medx-post-veil] body div[data-testid=\"primaryColumn\"] [data-medx-bg-el] {\n  background-color: var(--medx-post-veil) !important;\n}\n\n/* One layer only. Panels nest \u2014 the compose box holds the strip of icons, and\n   both are marked \u2014 so a translucent veil was painted twice there and came out\n   darker than the posts around it. The outer one carries it and anything\n   inside stays clear. */\nhtml[data-medx-post-veil] body div[data-testid=\"primaryColumn\"] [data-medx-bg-el] [data-medx-bg-el] {\n  background-color: transparent !important;\n}\n\n/* The hairlines left where a hidden sidebar panel used to be. Marked in\n   content.js, since their only distinguishing feature is being a pixel tall. */\n[data-testid=\"sidebarColumn\"] [data-medx-divider] {\n  display: none !important;\n}\n\n/* The highlight row in the corner menu: a label that fills the width and a\n   colour swatch beside it, so the colour is chosen where the choice is made\n   rather than in the options page. */\n.medx-menu-row {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.medx-menu-row button {\n  flex: 1;\n  text-align: left;\n}\n\n.medx-menu-swatch {\n  flex: none;\n  width: 26px;\n  height: 22px;\n  padding: 0;\n  border: 1px solid rgba(255, 255, 255, 0.25);\n  border-radius: 4px;\n  background: none;\n  cursor: pointer;\n  margin-right: 8px;\n}\n\n/* The \"Today's News\" panel, found and marked in content.js \u2014 it has no name of\n   its own, and its surroundings are shared with the Premium box. The articles\n   are hidden as well, so they vanish at once even before the panel is found. */\n[data-testid=\"sidebarColumn\"] [data-medx-news],\nhtml[data-medx-hide-news] [data-testid^=\"news_sidebar_article_\"] {\n  display: none !important;\n}\n\n/* A moving background, played as a video. A child of <html> beside <body>,\n   fixed behind the page: below the dimming veil (z-index 0) and the page, but\n   above <html>'s own background, where a chosen colour shows through a video\n   that does not fill the window. Never takes the pointer, never takes focus. */\nhtml > video[data-medx=\"background\"] {\n  position: fixed;\n  inset: 0;\n  width: 100vw;\n  height: 100vh;\n  z-index: -1;\n  pointer-events: none;\n  border: 0;\n  background: transparent;\n}\n\n/* No painted image behind a video \u2014 the stylesheet rule for the picture is\n   cleared, and this makes sure nothing inherited paints over the layer. */\nhtml[data-medx-bg-image=\"video\"] {\n  background-image: none !important;\n}\n\n/* The expand buttons on a video or image in a post. In the photo grid a tile\n   is too small for X's toolbar; elsewhere they are simply quicker. At rest\n   one button, which opens X's own viewer; pointed at, a second slides out\n   beside it, which goes to true fullscreen.\n\n   Both are pseudo-elements \u2014 ::after the viewer, ::before the fullscreen \u2014\n   and content.js recognises a click by where it lands. On media in posts,\n   not inside X's viewer. */\n/* A positioning context for the buttons \u2014 but only in the photo grid, where\n   the grid sets each tile's size itself. Everywhere else X positions its tiles\n   absolutely inside a wrapper that gives them their shape, and forcing them to\n   relative left them with no height at all: the media collapsed and showed\n   blank. Outside the grid, X's own positioning already anchors the buttons. */\nhtml[data-medx-photo-grid]\n  div[data-testid=\"cellInnerDiv\"]\n  div[data-testid=\"ScrollSnap-List\"]\n  [data-testid=\"tweetPhoto\"] {\n  position: relative;\n}\n\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::after,\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::before {\n  content: \"\";\n  position: absolute;\n  top: 8px;\n  width: 28px;\n  height: 28px;\n  border-radius: 50%;\n  background-color: rgba(0, 0, 0, 0.62);\n  background-position: center;\n  background-size: 14px 14px;\n  background-repeat: no-repeat;\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);\n  pointer-events: none;\n  transition: transform 120ms ease, opacity 120ms ease, background-color 120ms ease,\n    box-shadow 120ms ease;\n}\n\n/* The viewer button, in the corner, always showing. */\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::after {\n  right: 8px;\n  z-index: 4;\n  background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4'/></svg>\");\n  opacity: 0.85;\n}\n\n/* The fullscreen button, tucked behind the viewer button until pointed at. */\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::before {\n  right: 8px;\n  z-index: 3;\n  background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7'/></svg>\");\n  opacity: 0;\n  transform: translateX(0) scale(0.7);\n}\n\n/* Open: the fullscreen button slides out to the left. */\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"][data-medx-expand-hover]::before {\n  opacity: 0.85;\n  transform: translateX(-34px) scale(1);\n}\n\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"][data-medx-expand-hover]::after {\n  opacity: 1;\n}\n\n/* Whichever one the pointer is on grows and brightens, matching the MED-X\n   corner button. */\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"][data-medx-expand-hover=\"viewer\"]::after {\n  transform: scale(1.25);\n  background-color: rgba(0, 0, 0, 0.82);\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 8px rgba(255, 255, 255, 0.35);\n}\n\ndiv[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"][data-medx-expand-hover=\"full\"]::before {\n  opacity: 1;\n  transform: translateX(-34px) scale(1.25);\n  background-color: rgba(0, 0, 0, 0.82);\n  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 8px rgba(255, 255, 255, 0.35);\n}\n\n@media (prefers-reduced-motion: reduce) {\n  div[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::after,\n  div[data-testid=\"cellInnerDiv\"]\n  [data-testid=\"tweetPhoto\"]::before {\n    transition: none;\n  }\n}\n\n/* Fullscreen from the expand button. Everything above makes grid tiles square\n   by cropping \u2014 right in a grid, wrong once the element fills the monitor,\n   where a portrait video came out stretched edge to edge. Here the video, or\n   the preview before it plays, is fitted whole inside the screen with black\n   beside it.\n\n   Sized against the screen rather than its own box: X holds media in wrapper\n   boxes of a fixed shape, so fitting the video inside its wrapper would still\n   have fitted it inside a square. Fixed positioning inside a fullscreen\n   element measures against the screen itself. X's controls come later in the\n   page, so they still draw on top. */\n[data-testid=\"tweetPhoto\"]:fullscreen,\n[data-testid=\"videoPlayer\"]:fullscreen {\n  background: #000 !important;\n}\n\n[data-testid=\"tweetPhoto\"]:fullscreen video,\n[data-testid=\"tweetPhoto\"]:fullscreen img,\n[data-testid=\"videoPlayer\"]:fullscreen video {\n  position: fixed !important;\n  inset: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  max-width: none !important;\n  max-height: none !important;\n  object-fit: contain !important;\n  background: #000 !important;\n  transform: none !important;\n  /* Clicks land on the player around the video rather than the video itself.\n     In our fullscreen, content.js handles play and pause there and keeps the\n     click from X \u2014 which would otherwise treat it as a click on the post's\n     media and open its viewer in the background. */\n  pointer-events: none !important;\n}\n\n/* Images in fullscreen. X draws a timeline photo as a CSS background on a div\n   and keeps the <img> beside it transparent \u2014 so the rule above fitted an\n   invisible image while the visible one stayed stretched to fill the screen.\n   The background is fitted the same way: whole, centred, black around it.\n   Fixed to the screen for the same reason as the video, since X's wrapper\n   boxes hold a fixed shape. */\n/* Pictures only \u2014 a background with a url(. X's player draws the dark\n   gradient under its controls as a background-image too (a linear-gradient),\n   and matching that stretched it over the whole screen, darkening it all. */\n[data-testid=\"tweetPhoto\"]:fullscreen [style*=\"background-image\"][style*=\"url(\"] {\n  position: fixed !important;\n  inset: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  margin: 0 !important;\n  background-size: contain !important;\n  background-position: center !important;\n  background-repeat: no-repeat !important;\n  background-color: #000 !important;\n  transform: none !important;\n  pointer-events: none !important;\n}\n\n/* The MED-X entry in X's left sidebar. A copy of one of X's own nav items, so\n   size and spacing are X's; the icon is the MED-X pill drawn in the nav's text\n   colour, at the size of X's own icons. A copy keeps X's classes but not X's\n   hover behaviour, which runs in X's code, so hover is given back here. */\n/* Painted onto X's own icon element, which keeps X's size and alignment \u2014\n   so nothing here sets either. */\n.medx-nav-icon {\n  background-color: currentColor;\n  -webkit-mask: var(--medx-nav-icon) center / contain no-repeat;\n  mask: var(--medx-nav-icon) center / contain no-repeat;\n}\n\n[data-medx-nav-button] {\n  cursor: pointer;\n}\n\n[data-medx-nav-button] > div {\n  transition: background-color 0.2s;\n}\n\n[data-medx-nav-button]:hover > div,\n[data-medx-nav-button]:focus-visible > div {\n  background-color: color-mix(in srgb, currentColor 10%, transparent);\n}\n\n/* The settings, over the page. */\n#medx-settings-overlay {\n  position: fixed;\n  inset: 0;\n  /* The full window's width: the page keeps its scrollbar's space while the\n     settings are open, and the backdrop covers that too, rather than leaving\n     an undimmed strip down the edge. */\n  width: 100vw;\n  z-index: 2147483647;\n  overscroll-behavior: contain;\n  background: rgba(0, 0, 0, 0.55);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n/* What moves when the pop-up is dragged: the frame, its grip and Close. */\n#medx-settings-overlay .medx-settings-move {\n  position: relative;\n}\n\n/* The grip: along the pop-up's top edge, laid over the 20px bar the settings\n   page pins there in its own colour, with the handle drawn in the middle. It\n   has to be out here rather than in the page: a frame keeps the pointer's\n   movements to itself, and the dragging happens out here. It stops short of\n   the scrollbar on the right, which stays usable. */\n#medx-settings-overlay .medx-settings-grip {\n  position: absolute;\n  top: 0;\n  left: 0;\n  right: 14px;\n  height: 20px;\n  z-index: 2;\n  border-radius: 14px 0 0 0;\n  cursor: grab;\n  touch-action: none;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n/* Grey, which shows on a light settings page and a dark one alike. */\n#medx-settings-overlay .medx-settings-grip::before {\n  content: \"\";\n  width: 132px;\n  height: 5px;\n  border-radius: 999px;\n  background: rgba(140, 140, 140, 0.55);\n  transition: background 0.15s, width 0.15s;\n}\n\n#medx-settings-overlay .medx-settings-grip:hover::before,\n#medx-settings-overlay .medx-settings-move.dragging .medx-settings-grip::before {\n  background: rgba(140, 140, 140, 0.95);\n  width: 168px;\n}\n\n#medx-settings-overlay .medx-settings-move.dragging .medx-settings-grip {\n  cursor: grabbing;\n}\n\n/* The box clips the frame to rounded corners, scrollbar and all. */\n#medx-settings-overlay .medx-settings-box {\n  width: min(980px, calc(100vw - 32px));\n  height: calc(100vh - 64px);\n  border-radius: 14px;\n  overflow: hidden;\n  clip-path: inset(0 round 14px);\n}\n\n#medx-settings-overlay iframe {\n  display: block;\n  width: 100%;\n  height: 100%;\n  border: 0;\n  background: transparent;\n  color-scheme: normal;\n}\n\n/* Close, centred above the \"Filtering on\" text in the settings' header. The\n   settings page fills the frame with its 24px side padding, and the switch and\n   its text sit flush right, so the text's middle lands about 61px in from the\n   frame's right edge. The header starts 80px down the frame, below the bar\n   along the top and the Changelog button, so this sits 44px down, just above\n   it. Placed within what moves, so it moves when the pop-up is dragged. */\n#medx-settings-overlay .medx-settings-close {\n  position: absolute;\n  /* Placed within what moves, so it moves with the pop-up; 61px in from the\n     frame's right edge. Level with the settings' Changelog button: the same\n     37px height, its top in the same place \u2014 36px down the frame, below the\n     20px bar and the page's 16px of padding. */\n  top: 36px;\n  right: 61px;\n  transform: translateX(50%);\n  box-sizing: border-box;\n  height: 37px;\n  padding: 0 14px;\n  line-height: 35px;\n  border-radius: 6px;\n  border: 1px solid var(--medx-btn-line);\n  background: var(--medx-btn-paper);\n  color: var(--medx-btn-ink);\n  font: 400 14px system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  cursor: pointer;\n}\n\n/* The changelog's green dot on the sidebar button, the size and place of X's\n   own badges. Measured from a screenshot against X's notification badge, by\n   area so soft edges count in proportion, with this dot's own known size\n   calibrating the screenshot's scaling: X's badge is about 16px across, its\n   centre about 1px in from the icon's right edge and 4px down from its top.\n   Set from content.js while the changelog holds anything unseen. */\n[data-medx-nav-button][data-medx-unseen] .medx-nav-icon-holder::after {\n  content: \"\";\n  position: absolute;\n  top: -5px;\n  right: -8px;\n  width: 16px;\n  height: 16px;\n  border-radius: 50%;\n  /* A white up-arrow: \"updated\". The ring around it is the colour behind the\n     button, as X rings its own badges, so the dot reads as sitting on top of\n     the icon rather than merging into it. content.js works out that colour. */\n  background: #1f9d55\n    url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='white' d='M8 3.2 12.6 8.4H9.6V12.6H6.4V8.4H3.4Z'/></svg>\")\n    center / 12px 12px no-repeat;\n  /* A 1px border, as X outlines its own notification circle: drawn the same\n     way, Chrome rounds it to the screen's pixels the same way, so the two\n     match at any display scaling. Outside the 16px dot, so each edge is set\n     1px further out to keep its centre where it was. */\n  box-sizing: content-box;\n  border: 1px solid var(--medx-badge-ring, #000);\n  pointer-events: none;\n}\n\n/* Folding the sidebar's menu away: the nav and the Post button fold up under\n   the logo, the chevron rising with them. content.js marks the parts and\n   works out their heights so the fold can animate. */\n[data-medx-fold] {\n  overflow: hidden;\n  transition: max-height 0.28s ease, opacity 0.2s ease, margin 0.28s ease, padding 0.28s ease;\n}\n\n/* Folded to nothing: no height, and no vertical margin or padding either,\n   which a zero height alone leaves behind as a gap under the logo. */\nhtml[data-medx-nav-folded] [data-medx-fold] {\n  max-height: 0 !important;\n  margin-top: 0 !important;\n  margin-bottom: 0 !important;\n  padding-top: 0 !important;\n  padding-bottom: 0 !important;\n  opacity: 0;\n  pointer-events: none;\n}\n\n.medx-fold-holder {\n  display: flex;\n  margin-top: 8px;\n}\n\n/* Folded, beside the logo: on the page root, fixed to the screen where\n   content.js places it \u2014 out of X's page, so X can't clip it \u2014 with no margin\n   to throw the centring off. Above the page, below the settings pop-up. */\n.medx-fold-holder[data-medx-floating] {\n  position: fixed;\n  margin: 0;\n  z-index: 2147483000;\n}\n\n/* Folded but kept in the column, under the logo, when there's no room\n   beside it. */\nhtml[data-medx-nav-folded] .medx-fold-holder:not([data-medx-floating]) {\n  margin-top: 0;\n}\n\n/* The chevron: X's icon style, with its own hover circle and no label or\n   pill, so it reads as a control for the menu rather than an item in it.\n   Centred where X centres its nav icons. */\n.medx-fold-toggle {\n  position: relative;\n  width: 50px;\n  height: 50px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  border: 0;\n  border-radius: 50%;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  transition: background-color 0.2s;\n}\n\n.medx-fold-toggle:hover,\n.medx-fold-toggle:focus-visible {\n  background-color: color-mix(in srgb, currentColor 10%, transparent);\n}\n\n.medx-fold-toggle svg {\n  transition: transform 0.28s ease;\n}\n\n/* Folded, it points down: \"unfold\". */\nhtml[data-medx-nav-folded] .medx-fold-toggle svg {\n  transform: rotate(180deg);\n}\n\n/* The changelog's dot, while the MED-X button is folded away. */\n.medx-fold-toggle[data-medx-unseen]::after {\n  content: \"\";\n  position: absolute;\n  top: 7px;\n  right: 5px;\n  width: 16px;\n  height: 16px;\n  border-radius: 50%;\n  background: #1f9d55\n    url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='white' d='M8 3.2 12.6 8.4H9.6V12.6H6.4V8.4H3.4Z'/></svg>\")\n    center / 12px 12px no-repeat;\n  /* A 1px border, as X outlines its own notification circle: drawn the same\n     way, Chrome rounds it to the screen's pixels the same way, so the two\n     match at any display scaling. Outside the 16px dot, so each edge is set\n     1px further out to keep its centre where it was. */\n  box-sizing: content-box;\n  border: 1px solid var(--medx-badge-ring, #000);\n  pointer-events: none;\n}\n\n/* X's notification circle, copied onto the folded chevron: its top-right\n   corner, as X has it on its icon. X's own placement is set aside \u2014 it's\n   tuned for X's icon, not this button. */\n.medx-fold-badge {\n  position: absolute;\n  top: 2px;\n  right: 0;\n  display: flex;\n  pointer-events: none;\n}\n\n.medx-fold-badge > * {\n  position: static !important;\n  inset: auto !important;\n  transform: none !important;\n  margin: 0 !important;\n}\n\n/* With notifications in that corner, the changelog's dot goes to the one\n   below. */\n.medx-fold-toggle[data-medx-notified][data-medx-unseen]::after {\n  top: auto;\n  bottom: 5px;\n  /* Centred straight under the circle \u2014 content.js measures where that is;\n     1px less for the border. */\n  left: calc(var(--medx-dot-left, 32px) - 1px);\n  right: auto;\n}\n\n@media (prefers-reduced-motion: reduce) {\n  [data-medx-fold],\n  .medx-fold-toggle svg {\n    transition: none;\n  }\n}\n\n/* The grip's tooltip, in the settings' own style: their blue, their font,\n   their rounded corners, light and dark alike. The colours are the settings\n   page's own (options.css), copied here because X's page can't see them. */\n#medx-settings-overlay .medx-grip-tip {\n  --tip-surface: #e3ecf6;\n  --tip-ink: #14202a;\n  --tip-accent: #1d4e89;\n  position: absolute;\n  top: calc(100% + 8px);\n  left: 50%;\n  transform: translateX(-50%) translateY(-2px);\n  padding: 6px 12px;\n  border-radius: 8px;\n  border: 1px solid var(--tip-accent);\n  background: var(--tip-surface);\n  color: var(--tip-ink);\n  font: 500 13px/1.4 system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  white-space: nowrap;\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);\n  pointer-events: none;\n  opacity: 0;\n  transition: opacity 0.15s, transform 0.15s;\n}\n\n#medx-settings-overlay .medx-grip-tip.shown {\n  opacity: 1;\n  transform: translateX(-50%) translateY(0);\n}\n\n@media (prefers-color-scheme: dark) {\n  #medx-settings-overlay .medx-grip-tip {\n    --tip-surface: #1b2635;\n    --tip-ink: #e6edf3;\n    --tip-accent: #7fa9dc;\n  }\n}\n\n/* Click through, beside Close and dressed the same, just to its left: Close\n   is centred 61px in from the frame's edge and about 70px wide, so this ends\n   a little short of where Close begins. Lit in the settings' blue while on. */\n#medx-settings-overlay .medx-settings-through {\n  position: absolute;\n  /* Level with Close and the Changelog button, the same height and top. */\n  top: 36px;\n  right: 104px;\n  box-sizing: border-box;\n  height: 37px;\n  padding: 0 14px;\n  line-height: 35px;\n  border-radius: 6px;\n  border: 1px solid var(--medx-btn-line);\n  background: var(--medx-btn-paper);\n  color: var(--medx-btn-ink);\n  font: 400 14px system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  cursor: pointer;\n}\n\n/* Close and Click through dressed as the settings' own buttons, like the\n   Changelog button: 6px corners, a thin border, the settings' text colour and\n   font. Their colours are the settings page's (options.css), copied here\n   because X's page can't see them, light and dark. The background is solid,\n   in the settings' page colour: over the settings it looks the same as none,\n   and it keeps them readable when Click through fades the settings away. */\n#medx-settings-overlay {\n  --medx-btn-paper: #eceff1;\n  --medx-btn-ink: #14202a;\n  --medx-btn-line: #d7dee4;\n  --medx-btn-muted: #5b6b78;\n  --medx-btn-accent: #1d4e89;\n  --medx-btn-on-accent: #ffffff;\n}\n\n@media (prefers-color-scheme: dark) {\n  #medx-settings-overlay {\n    --medx-btn-paper: #10161b;\n    --medx-btn-ink: #e6edf3;\n    --medx-btn-line: #2a343d;\n    --medx-btn-muted: #93a3b0;\n    --medx-btn-accent: #7fa9dc;\n    --medx-btn-on-accent: #10161b;\n  }\n}\n\n#medx-settings-overlay .medx-settings-close:hover,\n#medx-settings-overlay .medx-settings-through:hover {\n  border-color: var(--medx-btn-muted);\n}\n\n/* Click through while on: filled in the settings' blue, to show it's on. */\n#medx-settings-overlay .medx-settings-through[aria-pressed=\"true\"] {\n  background: var(--medx-btn-accent);\n  border-color: var(--medx-btn-accent);\n  color: var(--medx-btn-on-accent);\n}\n\n/* While clicking through: the backdrop clears and lets clicks past, and the\n   settings fade and let clicks past too \u2014 only the grip and the two buttons\n   still catch them, so it can be switched off, closed or moved aside. */\n#medx-settings-overlay.click-through {\n  background: transparent !important;\n  pointer-events: none;\n}\n\n#medx-settings-overlay .medx-settings-box {\n  transition: opacity 0.2s;\n}\n\n#medx-settings-overlay.click-through .medx-settings-box {\n  opacity: 0.35;\n  pointer-events: none;\n}\n\n#medx-settings-overlay.click-through .medx-settings-grip,\n#medx-settings-overlay.click-through .medx-settings-close,\n#medx-settings-overlay.click-through .medx-settings-through {\n  pointer-events: auto;\n}\n\n/* ---------- centering the timeline ---------- */\n\n/* Room added on the left of the row holding X's menu, timeline and search\n   column, moving all three over; content.js works out how much. */\nhtml[data-medx-centered][data-medx-center-side=\"left\"] [data-medx-center-row] {\n  padding-left: var(--medx-center-shift, 0px) !important;\n  box-sizing: border-box !important;\n}\n\n/* Flipped, the timeline goes left: room on the row's right, the far end of\n   the reversed row, where its content is lined up from. */\nhtml[data-medx-centered][data-medx-center-side=\"right\"] [data-medx-center-row] {\n  padding-right: var(--medx-center-shift, 0px) !important;\n  box-sizing: border-box !important;\n}\n\n/* The search column narrowed to the room left, its pinned parts too. */\nhtml[data-medx-centered][data-medx-search-narrow] [data-testid=\"sidebarColumn\"] {\n  width: var(--medx-search-width) !important;\n  min-width: 0 !important;\n  max-width: var(--medx-search-width) !important;\n  flex-shrink: 0 !important;\n}\n\nhtml[data-medx-centered][data-medx-search-narrow] [data-testid=\"sidebarColumn\"] * {\n  max-width: var(--medx-search-width) !important;\n}\n\n/* ---------- the menu at the window's left edge ---------- */\n\n/* X's menu box, pinned but placed by the layout, given the window's left edge\n   instead; content.js finds and marks it. */\nhtml[data-medx-menu-left] header[role=\"banner\"] [data-medx-menu-pin] {\n  left: 0 !important;\n}\n\n/* With the layout flipped, the menu's edge is the right. */\nhtml[data-medx-menu-left][data-medx-flipped] header[role=\"banner\"] [data-medx-menu-pin] {\n  left: auto !important;\n  right: 0 !important;\n}\n\n/* ---------- flipping the layout ---------- */\n\n/* Both rows reversed \u2014 search \u00b7 timeline \u00b7 menu \u2014 and the menu lined up at its\n   column's near end, against the timeline, as X lines it up at the far end in\n   its own layout; the margin on its left set aside, or it would open a gap. */\nhtml[data-medx-flipped] [data-medx-flip-row],\nhtml[data-medx-flipped] [data-medx-flip-main] {\n  flex-direction: row-reverse !important;\n}\n\nhtml[data-medx-flipped] header[role=\"banner\"] {\n  align-items: flex-start !important;\n}\n\nhtml[data-medx-flipped] header[role=\"banner\"] > * {\n  margin-left: 0 !important;\n}\n\n/* The menu's contents mirrored on the right: lined up from the right, each\n   icon after its label, the icons in a straight column at the screen's edge\n   as they are at the left one in X's layout. Done by laying it out right to\n   left \u2014 but the text itself kept left to right, or something like @handle\n   would read handle@. */\nhtml[data-medx-flipped] header[role=\"banner\"] [data-medx-menu-pin] {\n  direction: rtl;\n}\n\nhtml[data-medx-flipped] header[role=\"banner\"] [data-medx-menu-pin] span {\n  direction: ltr;\n  unicode-bidi: isolate;\n}\n\n/* The main area's contents pushed to its right end, against the menu, as X\n   lines them up at its left end \u2014 the menu's side \u2014 in its own layout. */\nhtml[data-medx-flipped] [data-medx-flip-push] {\n  margin-left: auto !important;\n}\n\n/* The Terms and Privacy links, moved to the corner: the bottom left with the\n   layout flipped, the search column's side. X's Grok and chat buttons are in\n   the bottom right, so there's nothing to keep clear of here. */\nhtml[data-medx-footer-corner][data-medx-flipped] [data-testid=\"sidebarColumn\"] nav[aria-label=\"Footer\"] {\n  right: auto;\n  left: 12px;\n}\n\n/* ---------- zooming pictures and videos ---------- */\n\n/* The zoomed picture: moved and scaled from its top-left corner by content.js.\n   Repeated attributes, to outrank the fullscreen rules that pin these with\n   transform: none !important. */\nhtml body [data-medx-zoomed][data-medx-zoomed][data-medx-zoomed][data-medx-zoomed] {\n  transform: translate(var(--medx-zx, 0px), var(--medx-zy, 0px)) scale(var(--medx-zs, 1)) !important;\n  transform-origin: 0 0 !important;\n}\n\n/* Grabbable while zoomed and Alt is held \u2014 when Alt + drag will move it. */\nhtml[data-medx-alt] [data-testid=\"tweetPhoto\"]:fullscreen:has([data-medx-zoomed]),\nhtml[data-medx-alt] [aria-modal=\"true\"]:has([data-medx-zoomed]),\nhtml[data-medx-alt] [data-testid=\"tweetPhoto\"]:fullscreen:has([data-medx-zoomed]) *,\nhtml[data-medx-alt] [aria-modal=\"true\"]:has([data-medx-zoomed]) * {\n  cursor: grab !important;\n}\n\n/* The zoom level by the cursor, dressed like X's own badges. Out of the\n   pointer's way always; content.js places it and shows it. */\n#medx-zoom-badge {\n  position: fixed;\n  z-index: 2147483647;\n  padding: 2px 7px;\n  border-radius: 4px;\n  background: rgba(0, 0, 0, 0.75);\n  color: #fff;\n  font: 700 12px/1.4 system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  white-space: nowrap;\n  pointer-events: none;\n  opacity: 0;\n  transition: opacity 0.15s ease;\n}\n\n#medx-zoom-badge[data-show] {\n  opacity: 1;\n}\n\n/* ---------- a note while Alt is held ---------- */\n\n/* Bottom middle, over everything, and never in the way of a click. The same\n   spot on the page and in fullscreen: high enough to sit clear of a player's\n   controls there. */\n#medx-alt-note {\n  position: fixed;\n  left: 50%;\n  bottom: 88px;\n  transform: translateX(-50%);\n  z-index: 2147483647;\n  /* Half as big again as it began \u2014 13px words in 6px by 12px of padding \u2014\n     and outlined in white, to stand out on a dark picture as on a light page. */\n  padding: 9px 18px;\n  border: 1px solid #fff;\n  border-radius: 9px;\n  background: rgba(0, 0, 0, 0.72);\n  color: #fff;\n  font: 600 19.5px/1.3 system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  white-space: nowrap;\n  pointer-events: none;\n  user-select: none;\n  opacity: 0;\n  visibility: hidden;\n  transition: opacity 0.12s ease, visibility 0s linear 0.12s;\n}\n\n#medx-alt-note[data-show] {\n  opacity: 1;\n  visibility: visible;\n  transition: opacity 0.12s ease;\n}\n\n/* ---------- a horizontal volume slider ---------- */\n\n/* X's pop-up volume bar and its time readout, hidden: ours stand in. The\n   pop-up is matched by what's in it, so one X draws late is hidden too. */\n[data-medx-x-time],\n[data-medx-mute-wrap] > :not(button):has([role=\"slider\"]) {\n  display: none !important;\n}\n\n/* The slider, right after the mute button, and its number. */\n[data-medx-vol-slider] {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  margin: 0 8px 0 2px;\n  min-width: 0;\n  flex: 0 1 auto;\n}\n\n[data-medx-vol-slider] input[type=\"range\"] {\n  -webkit-appearance: none;\n  appearance: none;\n  flex: 0 1 72px;\n  width: 72px;\n  min-width: 36px;\n  height: 4px;\n  margin: 0;\n  border-radius: 2px;\n  background: linear-gradient(to right, #fff var(--medx-vol, 0%), rgba(255, 255, 255, 0.35) var(--medx-vol, 0%));\n  cursor: pointer;\n}\n\n[data-medx-vol-slider] input[type=\"range\"]::-webkit-slider-thumb {\n  -webkit-appearance: none;\n  appearance: none;\n  width: 12px;\n  height: 12px;\n  border: 0;\n  border-radius: 50%;\n  background: #fff;\n}\n\n[data-medx-vol-slider] input[type=\"range\"]::-moz-range-thumb {\n  width: 12px;\n  height: 12px;\n  border: 0;\n  border-radius: 50%;\n  background: #fff;\n}\n\n[data-medx-vol-slider] .medx-volume-num {\n  min-width: 3.2em;\n  color: #fff;\n  font: 600 13px/1 system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  font-variant-numeric: tabular-nums;\n  text-align: right;\n  white-space: nowrap;\n}\n\n/* The time readout, on the left beside play/pause: X's own styling, copied. */\n[data-medx-volume-time] {\n  align-self: center;\n  margin-left: 6px;\n  white-space: nowrap;\n}\n\n/* X's pop-up layer, moved into our fullscreen while it's up: drawn over the\n   picture, as it is over the page. Its top and left are set by the script,\n   to sit where it sat before the move. */\n#layers[data-medx-fs-layers] {\n  position: absolute !important;\n  z-index: 2147483647 !important;\n}\n");
 
 /* ---------- the settings panel ---------- */
 
-const PANEL_HTML = "\n    <main class=\"page\">\n      <header class=\"masthead\">\n        <img class=\"logo\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAWfmNhQlgAABZ+anVtYgAAAB5qdW1kYzJwYQARABCAAACqADibcQNjMnBhAAAAFlhqdW1iAAAAR2p1bWRjMm1hABEAEIAAAKoAOJtxA3VybjpjMnBhOjY4OWY0MDk0LWQxNDctNGM2NC1hNGJiLTdiYzFjYzE0YTUwZQAAAAOTanVtYgAAAClqdW1kYzJhcwARABCAAACqADibcQNjMnBhLmFzc2VydGlvbnMAAAAAuGp1bWIAAABEanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5pbmdyZWRpZW50LnYzAAAAABhjMnNoCz4XMLyIWG/1nMuR2NNX1gAAAGxjYm9yo2lkYzpmb3JtYXRpaW1hZ2UvcG5namluc3RhbmNlSUR4LHhtcDppaWQ6NjNkOWMxMzYtODFiOS00NzcxLTg1OWUtNmU5ZDYyYjE5NTI1bHJlbGF0aW9uc2hpcGhwYXJlbnRPZgAAAeJqdW1iAAAAQWp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuYWN0aW9ucy52MgAAAAAYYzJzaEbQ92xsHZSfe3JGbRNsCf4AAAGZY2JvcqJnYWN0aW9uc4KiZmFjdGlvbmtjMnBhLm9wZW5lZGpwYXJhbWV0ZXJzoWtpbmdyZWRpZW50c4GiY3VybHgtc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5pbmdyZWRpZW50LnYzZGhhc2hYIP9lM4RK3BRA0mKZtCMC9SToyY04ZIoyrxFKV+r5eSGNpGZhY3Rpb254HWNvbS5hbnRocm9waWMuY2xhdWRlLnByb3ZpZGVkanBhcmFtZXRlcnOheB9jb20uYW50aHJvcGljLm9yaWdpbi1jb25maWRlbmNlZ3Vua25vd25rZGVzY3JpcHRpb254ZkNsYXVkZSBwcm92aWRlZCB0aGlzIGZpbGUgYXQgdGhlIHJlcXVlc3Qgb2YgYSB1c2VyIGFuZCBtYXkgaGF2ZSBjcmVhdGVkIG9yIG1vZGlmaWVkIHRoZSBmaWxlIGNvbnRlbnRzLm1zb2Z0d2FyZUFnZW50oWRuYW1lZkNsYXVkZXJhbGxBY3Rpb25zSW5jbHVkZWT1AAAAyGp1bWIAAABAanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5oYXNoLmRhdGEAAAAAGGMyc2ieHXFQtBwh9bCb05HAzBCuAAAAgGNib3KlY2FsZ2ZzaGEyNTZjcGFkTQAAAAAAAAAAAAAAAABkaGFzaFggOlYuu1BoNq/uK7e3MbfsQpoIsFmYIw9MHp4tYITco11kbmFtZW5qdW1iZiBtYW5pZmVzdGpleGNsdXNpb25zgaJlc3RhcnQYIWZsZW5ndGgZFooAAAI+anVtYgAAACdqdW1kYzJjbAARABCAAACqADibcQNjMnBhLmNsYWltLnYyAAAAAg9jYm9ypWNhbGdmc2hhMjU2aXNpZ25hdHVyZXhNc2VsZiNqdW1iZj0vYzJwYS91cm46YzJwYTo2ODlmNDA5NC1kMTQ3LTRjNjQtYTRiYi03YmMxY2MxNGE1MGUvYzJwYS5zaWduYXR1cmVqaW5zdGFuY2VJRHgseG1wOmlpZDozMDEwNjc5ZC0xY2NiLTQwOWYtODliYi00YTIxZTJlYWUzZmFyY3JlYXRlZF9hc3NlcnRpb25zg6JjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFgg/2UzhErcFEDSYpm0IwL1JOjJjThkijKvEUpX6vl5IY2iY3VybHgqc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5hY3Rpb25zLnYyZGhhc2hYIL7XcdXie3R7LeGQrTETXHKziSkEWYuT6oosDhE6LFTJomN1cmx4KXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaGFzaC5kYXRhZGhhc2hYIOrakddzy4stf5Uf6K3s6hgfGT4zHyRCTS1iliEmSBdRdGNsYWltX2dlbmVyYXRvcl9pbmZvo2RuYW1lb0FudGhyb3BpYyBGaWxlc2d2ZXJzaW9uZTEuMC4wa3NwZWNWZXJzaW9uZTIuNC4wAAAQOGp1bWIAAAAoanVtZGMyY3MAEQAQgAAAqgA4m3EDYzJwYS5zaWduYXR1cmUAAAAQCGNib3LShFkCEqIBJhghWQIKMIICBjCCAY2gAwIBAgIUQOWgCu7COdC+uIP6BkIFPWdVEwAwCgYIKoZIzj0EAwMwSTEXMBUGA1UEChMOQW50aHJvcGljLCBQQkMxLjAsBgNVBAMTJUFudGhyb3BpYyBDb250ZW50IENyZWRlbnRpYWxzIFJvb3QgQ0EwHhcNMjYwODA3MTg0MzU2WhcNMjgwODA2MTk0MzU2WjBEMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEpMCcGA1UEAxMgQW50aHJvcGljIENsYXVkZSBDb250ZW50IFNpZ25pbmcwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASYegpry1AYBRTVNL1CpTlbROnY3dey+UrsF9C3phYrATN3ZHf93Mo8RQN0KOUuOn19P4oWNFWe5n2/She9N7eTo1gwVjAOBgNVHQ8BAf8EBAMCB4AwFQYDVR0lBA4wDAYKKwYBBAGD6F4CATAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFM5R4gSBTmRbI/jjxM+aPpzB11zCMAoGCCqGSM49BAMDA2cAMGQCMDFzHRSeAXrSy1WOzkbhPZ6Km2wGTmZ/2gK18k8BQGXyqz88Rdrz6CTX9flAnYNVxgIwcF9c3fVhqmJKpi+UhasNUMko69cyX6STPfta3Q8EjyzDjzoyrol46FP6VFHhvUcJoWNwYWRZDZ4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA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\" alt=\"\" width=\"128\" height=\"128\" />\n        <div>\n          <h1>MED-X</h1>\n          <p class=\"tagline\">More Enjoyable Doomscrolling on X</p>\n          <p class=\"lede\">\n            Make X a less miserable place to exist, with tons of options to\n            tailor your experience to your own personal preference.\n          </p>\n        </div>\n        <label class=\"master\">\n          <input type=\"checkbox\" id=\"enabled\" />\n          <span class=\"switch\" aria-hidden=\"true\"></span>\n          <span class=\"master-text\" id=\"enabled-label\">Filtering on</span>\n        </label>\n      </header>\n\n\n\n      <div class=\"searchbar\">\n        <input\n          type=\"search\"\n          id=\"settings-search\"\n          placeholder=\"Search settings - try &quot;flag&quot;, &quot;reply&quot;, &quot;color&quot;\"\n          autocomplete=\"off\"\n          aria-label=\"Search settings\"\n        />\n        <span class=\"search-status\" id=\"search-status\"></span>\n      </div>\n\n      <!-- Filled from the sections themselves, so a new section gets a tab\n           without anyone having to remember to add one here. -->\n      <div class=\"tabs\" id=\"tabs\" role=\"tablist\"></div>\n\n      <div class=\"columns\" id=\"sections\">\n      <section class=\"pane behaviour\" aria-labelledby=\"h-behaviour\">\n        <h2 id=\"h-behaviour\">Global</h2>\n\n        <div class=\"behaviour-grid\">\n          <div class=\"choice\">\n            <p class=\"note\" style=\"margin: 0 0 10px\">\n              The default for every filter. Each filter can override it in its\n              own section.\n            </p>\n            <label>\n              <input type=\"radio\" name=\"mode\" value=\"collapse\" />\n              <span>Collapse it to a bar I can expand</span>\n            </label>\n            <label>\n              <input type=\"radio\" name=\"mode\" value=\"remove\" />\n              <span>Remove it from the timeline</span>\n            </label>\n          </div>\n\n          <div class=\"preview\" id=\"preview\">\n            <div class=\"preview-bar\">\n              <span class=\"preview-rule\"></span>\n              <span class=\"preview-label\" id=\"preview-label\">Post in Japanese</span>\n              <span class=\"preview-who\">@example</span>\n              <span class=\"preview-actions\"><em>Show</em></span>\n            </div>\n            <p class=\"preview-caption\" id=\"preview-caption\">\n              How a hidden post will look in your timeline.\n            </p>\n          </div>\n        </div>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"peekKey\" />\n            <span>\n              Hold Alt to reveal hidden posts\n              <small\n                >Shows everything collapsed to a bar for as long as you hold it.\n                Posts set to be removed stay gone.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"showBadge\" />\n            <span>\n              Show the MED-X button on posts\n              <small\n                >The small logo in the corner of each post. Click it for the\n                post's bait score and quick actions.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"badgeGreyscale\" />\n              <span>\n                Greyscale\n                <small>Makes the button monochrome instead of colored.</small>\n              </span>\n            </label>\n          </div>\n          <label>\n            <input type=\"checkbox\" id=\"exemptAnsweredByAuthor\" />\n            <span>\n              Never hide a reply the poster answered\n              <small\n                >If whoever started the thread replied to it, it's part of the\n                conversation they wanted - so it stays, whatever else would have\n                hidden it.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"exemptFollowing\" />\n            <span>\n              Never hide accounts I follow\n              <small\n                >Makes accounts you follow exempt from all sections at\n                once.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Muted accounts <span class=\"count\" id=\"muted-count\">0</span></h3>\n          <p class=\"note\">\n            Hidden for a while, then back on their own. Mute one from the MED-X\n            button on any of its posts.\n          </p>\n          <p class=\"rule-line\">\n            Mute for\n            <select id=\"muteAccountDays\"></select>\n          </p>\n          <p class=\"rule-line\">\n            Hide muted accounts by\n            <select id=\"mutedModeOverride\">\n              <option value=\"\">using my default</option>\n              <option value=\"collapse\">collapsing the post to a bar</option>\n              <option value=\"remove\">removing the post entirely</option>\n            </select>\n          </p>\n          <ul class=\"list wide-list\" id=\"muted-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"muted-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"muted-add\">Mute</button>\n          </div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"global-allowed-count\">0</span></h3>\n          <p class=\"note\">\n            Exempt from every section, whether or not you follow them.\n          </p>\n          <ul class=\"list wide-list\" id=\"global-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"global-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"global-allow-add\">Add</button>\n          </div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Transfer settings</h3>\n          <p class=\"note\">\n            Save your settings to a file and load them in another browser or on\n            another computer. Browsers signed into the same Chrome profile\n            already share settings on their own - this is for everything else,\n            or a backup before you experiment.\n          </p>\n          <p class=\"note\">\n            Includes all your settings, muted accounts, muted quoted posts and\n            your X muted words. Location and bio caches are left out; they\n            rebuild as you browse.\n          </p>\n          <div class=\"checks\">\n            <label>\n              <input type=\"checkbox\" id=\"backupIncludePicture\" />\n              <span>\n                Include my background picture\n                <small>Can be several megabytes.</small>\n              </span>\n            </label>\n          </div>\n          <p class=\"rule-line\">\n            <button type=\"button\" id=\"backupExport\">Save to a file</button>\n            <label class=\"ghost file-button\" for=\"backupImportFile\">Load from a file</label>\n            <input type=\"file\" id=\"backupImportFile\" accept=\".json,application/json\" hidden />\n            <span class=\"search-status\" id=\"backupStatus\"></span>\n          </p>\n        </div>\n      </section>\n      <section class=\"pane wide\" aria-labelledby=\"h-langs\">\n        <h2 id=\"h-langs\">Languages to hide</h2>\n        <p class=\"rule-line\" style=\"margin-top: 18px\">\n          Hide these by\n          <select id=\"langModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n\n        <p class=\"note\">\n          These options hide languages you don't want to see from appearing in\n          your feed.\n        </p>\n        <p class=\"note\" id=\"lang-count\">Nothing selected yet.</p>\n\n        <div class=\"chips\" id=\"chips\"></div>\n\n        <div class=\"field-row\">\n          <input\n            type=\"search\"\n            id=\"lang-search\"\n            placeholder=\"Search languages\"\n            autocomplete=\"off\"\n          />\n        </div>\n\n        <div class=\"lang-grid\" id=\"lang-grid\"></div>\n\n        <div class=\"field-row custom\">\n          <input\n            type=\"text\"\n            id=\"custom-code\"\n            placeholder=\"Other code, e.g. yo\"\n            maxlength=\"8\"\n            autocomplete=\"off\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"custom-add\">Add</button>\n        </div>\n\n        <hr class=\"section-rule\" />\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"fallbackEnabled\" />\n            <span>\n              Guess the language when X doesn't label one\n              <small>Uses Chrome's built-in detector on untagged posts.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"shortRecheck\" />\n            <span>\n              Double-check very short posts\n              <small\n                >No detector is reliable on a few words - X calls \"Colorado\"\n                Portuguese and Chrome calls it Spanish. Short posts are hidden\n                only when the script backs the tag up, or Chrome independently\n                lands on the same language.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Treat a post as short below\n              <select id=\"shortMaxChars\"></select>\n              characters.\n            </p>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-annoy\">\n        <h2 id=\"h-annoy\">General annoyances</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"annoyModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n        <p class=\"note\">\n          Judged from the post's own words, with nothing to do with who wrote it.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hashtagOnly\" />\n            <span>\n              Hide posts that are only hashtags\n              <small\n                >Mentions, links and emoji count as filler too, so\n                \"#deal #sale @brand \ud83d\udd25\" qualifies. A post with any actual words\n                in it doesn't.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"selfPromo\" />\n            <span>\n              The thread author plugging themselves\n              <small\n                >Their reply right under their own post when it's a plug - \"this\n                blew up, anyway check out my...\" with a link, or asking for a\n                follow, like \"follow for more\" or \"hit tweet follow me\". Replies\n                giving a source or the full video are left alone, as is anything\n                further down the thread.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"aiLabels\" />\n            <span>\n              Hide posts X tags as AI-made\n              <small\n                >\"Made with Grok\", \"Generated with AI\" and similar. Matched on\n                the label X attaches, not the post's own words, so a post about\n                AI isn't caught.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"emojiRepeat\" />\n            <span>\n              Hide posts repeating the same emoji\n              <small>Like \ud83d\udd25\ud83d\udd25\ud83d\udd25 or \ud83d\ude2d \ud83d\ude2d \ud83d\ude2d - spaces don't break the run.</small>\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Repeated\n              <select id=\"emojiRepeatRun\"></select>\n              times or more.\n            </p>\n          </div>\n\n          <label>\n            <input type=\"checkbox\" id=\"minLikes\" />\n            <span>\n              Hide posts with few likes\n              <small\n                >Only from accounts you don't follow, and only once a post has\n                had time to collect them.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Hide under\n              <select id=\"minLikesCount\"></select>\n              likes, once it is at least\n              <select id=\"minLikesAge\"></select>\n              minutes old.\n            </p>\n\n            <label>\n              <input type=\"checkbox\" id=\"minLikesHomeOnly\" />\n              <span>\n                Only on the timeline\n                <small\n                  >Leaves replies alone in a thread you've opened, where a low\n                  like count doesn't say much.</small\n                >\n              </span>\n            </label>\n          </div>\n\n          <label>\n            <input type=\"checkbox\" id=\"fastReplies\" />\n            <span>\n              Hide replies posted within seconds of the post\n              <small\n                >Faster than reading and typing. The thread's own author is\n                exempt - continuing your own thread quickly is normal.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Within\n              <select id=\"fastReplySeconds\"></select>\n              seconds counts as too fast.\n            </p>\n          </div>\n\n        </div>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"punctuation\" />\n            <span>Hide posts with a long run of question marks</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"exclamation\" />\n            <span>Hide posts with a long run of exclamation marks</span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"includeExclamation\" />\n              <span>\n                Count a mix of both as a run\n                <small>So \"?!?!?!\" counts toward either rule above.</small>\n              </span>\n            </label>\n          </div>\n        </div>\n\n        <div class=\"sub-checks\">\n          <p class=\"rule-line\" style=\"margin: 0\">\n            For both, a run means\n            <select id=\"punctuationRun\"></select>\n            or more in a row.\n          </p>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"annoy-allowed-count\">0</span></h3>\n          <p class=\"note\">Exempt from every rule in this section.</p>\n          <ul class=\"list\" id=\"annoy-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"annoy-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"annoy-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-location\">\n        <h2 id=\"h-location\">Profile location</h2>\n        <p class=\"note\">\n          Matches the location an account typed into their own profile, read\n          from the timeline data X already sends. It's free text, so it's\n          unreliable in both directions - plenty of accounts leave it blank, and\n          anyone can put anything in it. This is not X's inferred country.\n        </p>\n\n        <p class=\"rule-line\">\n          When an account's location matches,\n          <select id=\"locationAction\">\n            <option value=\"off\">do nothing</option>\n            <option value=\"\">use my default</option>\n            <option value=\"collapse\">collapse the post to a bar</option>\n            <option value=\"remove\">remove the post entirely</option>\n          </select>\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"showBasedIn\" />\n            <span>\n              Show \"Account based in\" on profiles\n              <small\n                ><strong\n                  >One-time setup: open \"About this account\" on any profile\n                  once.</strong\n                >\n                That request is copied and reused for everyone else - X gives no\n                other way to ask. After that it's looked up when you hover or\n                open a profile and remembered afterwards, so it costs one\n                request per account rather than one per post.</small\n              >\n            </span>\n          </label>\n        </div>\n\n\n        <div class=\"chips\" id=\"location-chips\"></div>\n\n        <div class=\"field-row custom\">\n          <input\n            type=\"text\"\n            id=\"location-term-input\"\n            placeholder=\"Text to match, e.g. T\u00fcrkiye\"\n            maxlength=\"40\"\n            autocomplete=\"off\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"location-term-add\">Add</button>\n        </div>\n        <p class=\"note\">\n          Matching ignores case and accents, so \"turkiye\" catches \"T\u00fcrkiye\". It\n          won't connect different words though - \"Turkey\", \"T\u00fcrkiye\" and\n          \"Istanbul\" are three separate terms.\n        </p>\n\n        <div class=\"allow-block\">\n          <h3>Locations seen <span class=\"count\" id=\"location-seen-count\">0</span></h3>\n          <p class=\"note\">\n            What accounts in your timeline have actually written, most common\n            first. Click one to add it as a term.\n          </p>\n          <div class=\"chips\" id=\"location-seen\"></div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"location-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"location-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"location-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"location-allow-add\">Add</button>\n          </div>\n        </div>\n\n        <button type=\"button\" class=\"ghost danger\" id=\"clear-locations\">\n          Clear cached locations\n        </button>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-watch\">\n        <h2 id=\"h-watch\">Post highlighter</h2>\n        <p class=\"note\">\n          Posts get a colored background and the matching words are marked.\n          Both the post's text and the author's display name are searched.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"watchEnabled\" />\n            <span>Highlight posts containing my words</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"watchOverride\" />\n            <span>\n              Show them even if a filter would hide them\n              <small\n                >Worth keeping on, otherwise a highlighted post could be\n                hidden by another filter before you ever see it.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"watchMarkWords\" />\n            <span>\n              Mark the matching words as well\n              <small\n                >With this off, a matching post still gets its background and\n                edge color, but the words themselves are left alone.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"watchSkipTranslated\" />\n            <span>\n              Skip posts translated from a language I hide\n              <small\n                >X's translation can contain a term you watch for even though\n                the post itself is in a language you chose not to see.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"bait-rules\" id=\"watch-terms\"></div>\n        <div class=\"field-row custom\">\n          <input\n            type=\"text\"\n            id=\"watch-term-input\"\n            placeholder=\"Word or phrase to watch for\"\n            maxlength=\"100\"\n            autocomplete=\"off\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"watch-term-add\">Add</button>\n        </div>\n\n        <p class=\"note\">\n          <strong>Whole word</strong>: when turned off, it matches the word\n          inside other words, so \"art\" also hits \"hearts\" and \"particle\". When\n          on, it only highlights the word if it's completely standalone from\n          other words.\n        </p>\n\n        <div class=\"allow-block\">\n          <h3>Accounts to highlight <span class=\"count\" id=\"watch-account-count\">0</span></h3>\n          <p class=\"note\">\n            Every post from these accounts gets its color, whatever it says.\n          </p>\n          <div class=\"bait-rules\" id=\"watch-accounts\"></div>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"watch-account-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"watch-account-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-signals\">\n        <h2 id=\"h-signals\">Account Red Flags</h2>\n        <p class=\"rule-line\">\n          Hide at a score of\n          <select id=\"signalsThreshold\"></select>\n          or higher, by\n          <select id=\"signalsModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>.\n        </p>\n\n\n        <p class=\"note\">\n          These describe behaviour that bots share with new accounts and\n          enthusiastic people - none of them means \"bot\" on its own, which is\n          why each is scored and named rather than rolled into one number. Watch\n          the scores before switching hiding on. You can also just use this\n          section to\n          hide people that you find insufferable and would never want to\n          associate with.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"signalsHide\" />\n            <span>\n              Hide posts from accounts that reach the score below\n              <small>Off by default. Accounts with no data score nothing.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"alwaysHideNoAvatar\" />\n            <span>\n              Always hide accounts with no profile picture\n              <small\n                >Outright, whatever the score says. The scored rule below is\n                left alone, so what a default avatar contributes to everything\n                else doesn't change.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"bait-rules\" id=\"signals-rules\"></div>\n\n        <div class=\"sub-checks\" id=\"near-dupe-extras\">\n          <label>\n            <input type=\"checkbox\" id=\"nearDupesPhrases\" />\n            <span>\n              Also match on shared distinctive phrases\n              <small\n                >Catches accounts working from one script, whatever the\n                percentage says. Aggressive: it cannot tell them from two\n                people describing the same event, so replies to a popular post\n                will get caught.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"nearDupesBoth\" />\n            <span>\n              Hide the reply that was copied too\n              <small\n                >The original post that the detector deems copied is usually\n                also a bot reply.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"signals-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"signals-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"signals-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"signals-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-shovel\">\n        <h2 id=\"h-shovel\">Shovel accounts</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"shovelModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n\n        <p class=\"note\">\n          Accounts whose name says what they are: reposters, aggregators and\n          content mills. Matched whole-word, so \"anon\" doesn't catch\n          \"anonymous\".\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"shovelEnabled\" />\n            <span>Hide posts from accounts with these words in their name</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"shovelCheckHandle\" />\n            <span>\n              Check the @handle too\n              <small>Not just the display name.</small>\n            </span>\n          </label>\n        </div>\n\n        <div class=\"lang-grid\" id=\"shovel-words\"></div>\n\n        <div class=\"field-row custom\">\n          <input\n            type=\"text\"\n            id=\"shovel-word-input\"\n            placeholder=\"Another word\"\n            maxlength=\"30\"\n            autocomplete=\"off\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"shovel-word-add\">Add</button>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"shovel-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"shovel-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"shovel-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"shovel-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-flags\">\n        <h2 id=\"h-flags\">Flags in names and bios</h2>\n        <p class=\"note\">\n          Matches flag emoji in an account's display name.\n        </p>\n\n        <p class=\"rule-line\">\n          When an account has a matching flag,\n          <select id=\"flagAction\">\n            <option value=\"off\">do nothing</option>\n            <option value=\"\">use my default</option>\n            <option value=\"collapse\">collapse the post to a bar</option>\n            <option value=\"remove\">remove the post entirely</option>\n          </select>\n        </p>\n\n        <div class=\"choice\" id=\"flag-modes\">\n          <label>\n            <input type=\"radio\" name=\"flagMode\" value=\"any\" />\n            <span>Any flag at all</span>\n          </label>\n          <label>\n            <input type=\"radio\" name=\"flagMode\" value=\"only\" />\n            <span>Only the flags I pick below</span>\n          </label>\n          <label>\n            <input type=\"radio\" name=\"flagMode\" value=\"except\" />\n            <span>Every flag except the ones I pick below</span>\n          </label>\n        </div>\n\n        <div class=\"chips\" id=\"flag-chips\"></div>\n\n        <div class=\"field-row\">\n          <input\n            type=\"search\"\n            id=\"flag-search\"\n            placeholder=\"Search flags\"\n            autocomplete=\"off\"\n          />\n        </div>\n        <p class=\"note\" id=\"flag-hint\"></p>\n        <div class=\"lang-grid\" id=\"flag-grid\"></div>\n\n        <div class=\"checks\" style=\"margin-top: 18px\">\n          <label>\n            <input type=\"checkbox\" id=\"flagsRestoreEmoji\" />\n            <span>\n              Show flag emoji properly on X\n              <small\n                >X removed Twemoji, so flags no longer have an image and just\n                show as text like \"PR\" for Puerto Rico. This option restores\n                the flags.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"flagsCheckBio\" />\n            <span>\n              Also check bios\n              <small\n                >Bios aren't in the timeline. This only covers accounts whose\n                profile or hover card you've already loaded, and fills in as you\n                browse.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"flagsCountryNames\" />\n            <span>\n              Also match country names written out\n              <small\n                >\"Ukraine\", \"Free Palestine\", and demonyms like \"Syrian\" or\n                \"Americans\" - not just the flag. Countries that are also common\n                names - Jordan, Georgia, Chad - are left out.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"flagsCountryNamesMatchFlags\" />\n              <span>\n                Only countries whose flags I'm hiding\n                <small\n                  >Follows the flag choice above, so this doesn't quietly widen\n                  to every country in the world.</small\n                >\n              </span>\n            </label>\n          </div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"flag-allowed-count\">0</span></h3>\n          <p class=\"note\">\n            Exempt from flag filtering whatever their name says. Shift-clicking a\n            hidden post's bar adds the account here. Separate from the never-mute\n            list above, which only affects language tallies.\n          </p>\n          <ul class=\"list\" id=\"flag-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"flag-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"flag-allow-add\">Add</button>\n          </div>\n        </div>\n\n        <p class=\"note\" id=\"bio-count\"></p>\n        <button type=\"button\" class=\"ghost\" id=\"clear-bios\">Clear cached bios</button>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-quotes\">\n        <h2 id=\"h-quotes\">Quote tweets</h2>\n        <p class=\"note\">\n          A quote tweet is a single post as far as the timeline is concerned, so\n          hiding one takes the commentary with it.\n        </p>\n\n        <div class=\"allow-block\" style=\"margin-top: 0\">\n          <div class=\"checks\">\n            <label>\n              <input type=\"checkbox\" id=\"muteWordsInQuotes\" />\n              <span>\n                Apply my X muted words to quoted posts\n                <small\n                  >X mutes the post you see but not the post quoted inside it.\n                  Your list is picked up when you visit Settings > Privacy and\n                  safety > Mute and block > Muted words \u2014 it can't be read any\n                  other way.</small\n                >\n              </span>\n            </label>\n            <div class=\"sub-checks\">\n              <p class=\"rule-line\" style=\"margin: 0\">\n                Hide these by\n                <select id=\"quoteMutedModeOverride\">\n                  <option value=\"\">using my default</option>\n                  <option value=\"collapse\">collapsing the post to a bar</option>\n                  <option value=\"remove\">removing the post entirely</option>\n                </select>\n              </p>\n            </div>\n          </div>\n\n          <h3>Muted quoted posts <span class=\"count\" id=\"snooze-count\">0</span></h3>\n          <p class=\"note\">\n            Alt-click the embedded card on any quote tweet to mute that quoted\n            post - every post quoting it disappears until the date runs out.\n            You can also mute a quoted post from the MED-X Corner Menu.\n          </p>\n\n          <p class=\"rule-line\">\n            New mutes last\n            <select id=\"snoozeDays\"></select>\n          </p>\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Hide these by\n              <select id=\"snoozedModeOverride\">\n                <option value=\"\">using my default</option>\n                <option value=\"collapse\">collapsing the post to a bar</option>\n                <option value=\"remove\">removing the post entirely</option>\n              </select>\n            </p>\n          </div>\n\n          <ul class=\"list\" id=\"snooze-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"snooze-input\"\n              placeholder=\"Paste a post URL to mute it\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"snooze-add\">Mute</button>\n          </div>\n        </div>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"allowSelfQuotes\" />\n            <span>\n              Keep quote tweets where someone is quoting themselves\n              <small\n                >Continuing their own thread rather than amplifying a stranger.\n                Their own post is still checked normally in other filters.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"checkQuotes\" />\n            <span>\n              Check the quoted post's language\n              <small>Applies your hidden-language list to the quoted half.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"flagsCheckQuotes\" />\n            <span>\n              Check the quoted account's name for flags\n            </span>\n          </label>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-verified\">\n        <h2 id=\"h-verified\">Account types</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"verifiedModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"labelParody\" />\n            <span>Hide parody accounts</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"labelCommentary\" />\n            <span>Hide commentary accounts</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"labelFan\" />\n            <span>Hide fan accounts</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"labelAutomated\" />\n            <span>\n              Hide automated accounts\n              <small>Accounts X marks as bots - the honest ones, at least.</small>\n            </span>\n          </label>\n        </div>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideBlue\" />\n            <span>\n              Hide blue checks\n              <small>Paid subscribers.</small>\n            </span>\n          </label>\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"blueRepliesOnly\" />\n              <span>\n                Only their replies\n                <small\n                  >Only removes blue check users in the replies.</small>\n              </span>\n            </label>\n          </div>\n\n          <label>\n            <input type=\"checkbox\" id=\"hideBusiness\" />\n            <span>\n              Hide gold checks\n              <small>Verified organisations and brands.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideGovernment\" />\n            <span>\n              Hide grey checks\n              <small>Government and multilateral accounts.</small>\n            </span>\n          </label>\n        </div>\n\n\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideUnverifiedReplies\" />\n            <span>\n              Hide replies from accounts with no checkmark\n              <small\n                >The inverse of the switches above: catches accounts with no\n                badge at all.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <p class=\"note\" style=\"margin-top: 4px\">\n          These two apply to both reply rules above.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"blueFollowedReplies\" />\n            <span>\n              Keep replies from accounts I follow\n              <small>Their own posts are still subject to the switches above.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"blueSelfReplies\" />\n            <span>\n              Keep verified users replies inside their own threads\n              <small\n                >Covers replying to themselves, and replying to whoever answered\n                a thread they started.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"verified-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"verified-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"verified-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"verified-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-media\">\n        <h2 id=\"h-media\">Videos</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"videoModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n\n        <hr class=\"section-rule\" />\n\n        <h3>Short clips</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideShortVideo\" />\n            <span>Hide posts whose video is short</span>\n          </label>\n        </div>\n\n        <div class=\"sub-checks\">\n          <p class=\"rule-line\" style=\"margin: 0\">\n            Short means\n            <select id=\"videoMaxSeconds\"></select>\n            seconds or less.\n          </p>\n          <label>\n            <input type=\"checkbox\" id=\"videoIncludeGifs\" />\n            <span>\n              Count GIFs too\n              <small\n                >X stores GIFs as silent looping video, so they're all short by\n                nature and would otherwise all be caught.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <h3>Vertical clips</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideVertical\" />\n            <span>\n              Hide vertical videos\n              <small\n                >Portrait clips are overwhelmingly reposts from TikTok and\n                Reels. It's the shape, not a watermark check - an original\n                phone video gets caught too.</small\n              >\n            </span>\n          </label>\n        </div>\n\n<h3>Playback</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"clickPausesMuted\" />\n            <span>\n              <span class=\"experimental\">Experimental:</span> Video Player\n              Click-to-Mute Fixes\n              <small>\n                This option has two functions:\n                <ul>\n                  <li>\n                    X normally unmutes a muted video when you click it - this\n                    makes it pause instead like it does when the video is\n                    unmuted.\n                  </li>\n                  <li>\n                    When someone uses a video from another post, there's a\n                    small attribution box on the lower left of the video player\n                    linking to that post. This fixes the video player so\n                    clicking on the player to the right of this box actually\n                    pauses the video player instead of just doing nothing.\n                  </li>\n                </ul>\n                Both work by taking the click on the player, so they can't be\n                separated. Mostly works, but it's finnicky.\n              </small>\n            </span>\n          </label>\n        </div>\n\n\n        <p class=\"rule-line\">\n          Start videos at\n          <select id=\"videoVolume\"></select>\n          volume.\n        </p>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"video-allowed-count\">0</span></h3>\n          <p class=\"note\">\n            Shift-clicking a hidden post's bar adds the account here.\n          </p>\n          <ul class=\"list\" id=\"video-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"video-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"video-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-bait\">\n        <h2 id=\"h-bait\">Engagement bait</h2>\n        <p class=\"rule-line\">\n          Hide at a score of\n          <select id=\"baitThreshold\"></select>\n          or higher, by\n          <select id=\"baitModeOverride\">\n            <option value=\"\">using the setting above</option>\n            <option value=\"collapse\">collapsing to a bar</option>\n            <option value=\"remove\">removing them entirely</option>\n          </select>.\n        </p>\n\n\n        <p class=\"note\">\n          This one guesses. It reads patterns in the wording and the reply-to-like\n          ratio, and it will sometimes be wrong. Leave hiding off, watch the scores\n          on your own timeline for a few days, then decide what to trust.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"baitHide\" />\n            <span>Hide posts that reach the threshold</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"baitEnabled\" />\n            <span>Score posts as I scroll</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"baitShowScores\" />\n            <span>\n              Show each post's score in the MED-X corner menu\n              <small\n                >Also lights up the button on scored posts; with this off it\n                stays faded.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"baitHighlight\" />\n            <span>\n              Highlight the text that matched\n              <small\n                >Marks the exact words or emoji a rule caught, so a bad rule is\n                obvious rather than mysterious. The reply-ratio and quote-length\n                rules are the exceptions - they're counts, with no particular\n                text to point at.</small\n              >\n            </span>\n          </label>\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"baitHighlightOnlyScored\" />\n              <span>\n                Only on posts that reach the threshold\n                <small\n                  >Otherwise a single weak match gets underlined on a post that\n                  stays visible.</small\n                >\n              </span>\n            </label>\n          </div>\n\n        </div>\n\n        <hr class=\"section-rule\" />\n        <hr class=\"section-rule\" />\n\n        <div class=\"bait-rules\" id=\"bait-rules\"></div>\n\n        <div class=\"allow-block\">\n          <h3>Your own phrases <span class=\"count\" id=\"custom-count\">0</span></h3>\n          <p class=\"note\">\n            Plain text, not patterns - matched anywhere in a post unless you tick\n            whole word. Case is ignored. Each adds its weight to the score like\n            any other rule, and the matching text gets highlighted.\n          </p>\n          <div class=\"bait-rules\" id=\"custom-rules\"></div>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"custom-phrase-input\"\n              placeholder=\"Phrase to catch, e.g. engagement farming\"\n              maxlength=\"100\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"custom-phrase-add\">Add</button>\n          </div>\n\n        </div>\n      </section>\n\n      <section class=\"pane\" aria-labelledby=\"h-source\">\n        <h2 id=\"h-source\">Posting app</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"sourceModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n        <p class=\"note\">\n          X stopped showing which app a post came from, but still sends it.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"sourceThirdParty\" />\n            <span>\n              Hide posts from third-party tools\n              <small\n                >Scheduling and marketing software - Circleboom, Emplifi and\n                the like. Often used by corporations/brands to shovel posts out\n                there.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"sourceIphone\" />\n            <span>Hide posts from iPhone</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"sourceAndroid\" />\n            <span>Hide posts from Android</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"sourceWeb\" />\n            <span>Hide posts from the web app</span>\n          </label>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"source-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"source-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input type=\"text\" id=\"source-allow-input\" placeholder=\"@handle\" maxlength=\"16\" autocomplete=\"off\" />\n            <button type=\"button\" class=\"ghost\" id=\"source-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-clutter\">\n        <h2 id=\"h-clutter\">Interface</h2>\n        <p class=\"note\">\n          Part of X's own interface rather than posts, so none of the other\n          filter settings apply to this section.\n        </p>\n\n        <h3>Sidebar logo</h3>\n        <p class=\"rule-line\">\n          Show\n          <select id=\"logo\">\n            <option value=\"\">X's own</option>\n            <option value=\"wordmark\">Twitter Wordmark</option>\n            <option value=\"bird\">Bird</option>\n            <option value=\"medx\">MED-X</option>\n          </select>\n          in\n          <input type=\"color\" id=\"logoColour\" class=\"colour-picker\" />\n        </p>\n\n        <h3>Post text</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"fontEverywhere\" />\n            <span>\n              Apply to the whole interface\n              <small\n                >Not only posts. The color still only applies to post text \u2014\n                recoloring every label flattens the rest of the page.</small\n              >\n            </span>\n          </label>\n        </div>\n        <p class=\"rule-line\">\n          Font\n          <select id=\"fontFamily\">\n            <option value=\"\">X's own</option>\n            <optgroup label=\"Sans serif\">\n              <option value=\"system-ui, -apple-system, 'Segoe UI', sans-serif\">\n                System\n              </option>\n              <option value=\"Helvetica, 'Helvetica Neue', Arial, sans-serif\">\n                Helvetica\n              </option>\n              <option value=\"Verdana, Geneva, sans-serif\">Verdana</option>\n              <option value=\"Tahoma, Geneva, sans-serif\">Tahoma</option>\n              <option value=\"'Trebuchet MS', 'Lucida Grande', sans-serif\">\n                Trebuchet\n              </option>\n              <option value=\"'Avenir Next', Avenir, 'Segoe UI', sans-serif\">\n                Avenir\n              </option>\n              <option value=\"Optima, Candara, 'Segoe UI', sans-serif\">Optima</option>\n              <option value=\"'Futura', 'Century Gothic', 'URW Gothic', sans-serif\">\n                Futura\n              </option>\n            </optgroup>\n            <optgroup label=\"Serif\">\n              <option value=\"Georgia, 'Times New Roman', serif\">Georgia</option>\n              <option value=\"'Iowan Old Style', Palatino, Georgia, serif\">\n                Iowan Old Style\n              </option>\n              <option value=\"Palatino, 'Palatino Linotype', 'Book Antiqua', serif\">\n                Palatino\n              </option>\n              <option value=\"'Times New Roman', Times, serif\">Times</option>\n              <option value=\"Charter, 'Bitstream Charter', Cambria, serif\">\n                Charter\n              </option>\n              <option value=\"Baskerville, 'Libre Baskerville', Georgia, serif\">\n                Baskerville\n              </option>\n              <option value=\"Didot, 'Playfair Display', Georgia, serif\">Didot</option>\n            </optgroup>\n            <optgroup label=\"Monospace\">\n              <option value=\"'SF Mono', Consolas, 'Liberation Mono', monospace\">\n                System mono\n              </option>\n              <option value=\"'Courier New', Courier, monospace\">Courier</option>\n              <option value=\"Menlo, 'DejaVu Sans Mono', Consolas, monospace\">\n                Menlo\n              </option>\n              <option value=\"'Andale Mono', 'Lucida Console', monospace\">\n                Andale Mono\n              </option>\n            </optgroup>\n            <optgroup label=\"Character\">\n              <option value=\"'Comic Sans MS', 'Comic Sans', cursive\">\n                Comic Sans\n              </option>\n              <option value=\"'Brush Script MT', 'Segoe Script', cursive\">\n                Brush Script\n              </option>\n              <option value=\"'Bradley Hand', 'Segoe Print', cursive\">\n                Bradley Hand\n              </option>\n            </optgroup>\n          </select>\n        </p>\n\n        <p class=\"rule-line\">\n          Weight\n          <select id=\"fontWeight\">\n            <option value=\"\">X's own</option>\n            <option value=\"300\">Light</option>\n            <option value=\"400\">Normal</option>\n            <option value=\"500\">Medium</option>\n            <option value=\"600\">Semibold</option>\n            <option value=\"700\">Bold</option>\n          </select>\n        </p>\n\n        <p class=\"rule-line\">\n          <label class=\"inline-check\" for=\"fontColour\">Color</label>\n          <input type=\"color\" id=\"fontColour\" class=\"colour-picker\" />\n          <button type=\"button\" class=\"ghost\" id=\"fontColourReset\">\n            Use X's own\n          </button>\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"fontColourUsernames\" />\n            <span>\n              Color names and handles too\n              <small>Uses the post text color unless you pick another.</small>\n            </span>\n          </label>\n        </div>\n\n        <div class=\"sub-checks\">\n          <p class=\"rule-line\" style=\"margin: 0\">\n            <label class=\"inline-check\" for=\"fontUsernameColour\">\n              Name color\n            </label>\n            <input type=\"color\" id=\"fontUsernameColour\" class=\"colour-picker\" />\n            <button type=\"button\" class=\"ghost\" id=\"fontUsernameColourReset\">\n              Match post text\n            </button>\n          </p>\n        </div>\n\n        <p class=\"rule-line\">\n          Name outline\n          <select id=\"fontUsernameStroke\">\n            <option value=\"0\">none</option>\n            <option value=\"0.5\">hairline</option>\n            <option value=\"1\">thin</option>\n            <option value=\"2\">medium</option>\n            <option value=\"3\">thick</option>\n            <option value=\"4\">heavy</option>\n            <option value=\"6\">very heavy</option>\n          </select>\n          <input type=\"color\" id=\"fontUsernameStrokeColour\" class=\"colour-picker\" />\n        </p>\n\n        <p class=\"rule-line\">\n          Name glow\n          <select id=\"fontUsernameGlow\">\n            <option value=\"0\">none</option>\n            <option value=\"1\">faint</option>\n            <option value=\"2\">soft</option>\n            <option value=\"3\">strong</option>\n            <option value=\"4\">neon</option>\n          </select>\n          <input type=\"color\" id=\"fontUsernameGlowColour\" class=\"colour-picker\" />\n        </p>\n\n        <p class=\"rule-line\">\n          Name weight\n          <select id=\"fontUsernameWeight\">\n            <option value=\"\">Same as post text</option>\n            <option value=\"300\">Light</option>\n            <option value=\"400\">Normal</option>\n            <option value=\"500\">Medium</option>\n            <option value=\"600\">Semibold</option>\n            <option value=\"700\">Bold</option>\n            <option value=\"800\">Extra bold</option>\n          </select>\n        </p>\n\n\n        <h3>Background</h3>\n        <p class=\"note\">Applies to the background of the entire website.</p>\n        <p class=\"rule-line\">\n          <label class=\"inline-check\" for=\"timelineBackground\">\n            Background color\n          </label>\n          <input type=\"color\" id=\"timelineBackground\" class=\"colour-picker\" />\n          <button type=\"button\" class=\"ghost\" id=\"timelineBackgroundReset\">\n            Use X's own\n          </button>\n        </p>\n\n        <div class=\"sub-checks\">\n          <label>\n            <input type=\"checkbox\" id=\"timelineGradient\" />\n            <span>\n              Fade to a second color\n              <small\n                >A gradient behind the whole page rather than a flat\n                color.</small\n              >\n            </span>\n          </label>\n          <p class=\"rule-line\" style=\"margin: 8px 0 0\">\n            Fading to\n            <input type=\"color\" id=\"timelineBackgroundTo\" class=\"colour-picker\" />\n            at\n            <select id=\"timelineGradientAngle\">\n              <option value=\"180\">top to bottom</option>\n              <option value=\"0\">bottom to top</option>\n              <option value=\"90\">left to right</option>\n              <option value=\"135\">diagonally</option>\n            </select>\n          </p>\n        </div>\n\n        <h3>Picture</h3>\n        <p class=\"note\">\n          Covers the background color above. A PNG with transparency is the\n          exception - the color shows through wherever the picture is clear.\n        </p>\n        <p class=\"note\">\n          Can also be animated: an MP4 or WebM video, or an animated WebP, PNG\n          or GIF, up to 5MB. Video is the best choice for anything longer than\n          a few seconds - it's far smaller and lighter to play. Motion pauses\n          while the tab is hidden, and stays still if your system is set to\n          reduce motion.\n        </p>\n\n        <p class=\"rule-line\">\n          <label class=\"inline-check\" for=\"backgroundImageFile\">Picture</label>\n          <input\n            type=\"file\"\n            id=\"backgroundImageFile\"\n            accept=\"image/*,video/mp4,video/webm\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"backgroundImageClear\">\n            Remove\n          </button>\n          <span class=\"search-status\" id=\"backgroundImageStatus\"></span>\n        </p>\n\n        <p class=\"rule-line\">\n          Fit it by\n          <select id=\"backgroundFit\">\n            <option value=\"cover\">filling the window</option>\n            <option value=\"contain\">fitting it all in</option>\n            <option value=\"tile\">tiling it</option>\n          </select>\n          anchored\n          <select id=\"backgroundPosition\">\n            <option value=\"center\">in the middle</option>\n            <option value=\"left\">to the left</option>\n            <option value=\"right\">to the right</option>\n            <option value=\"20%\">left of center</option>\n            <option value=\"80%\">right of center</option>\n            <option value=\"center top\">to the top</option>\n            <option value=\"center bottom\">to the bottom</option>\n            <option value=\"left top\">to the top left</option>\n            <option value=\"right top\">to the top right</option>\n            <option value=\"left bottom\">to the bottom left</option>\n            <option value=\"right bottom\">to the bottom right</option>\n          </select>\n          and dim it\n          <select id=\"backgroundDim\">\n            <option value=\"0\">not at all</option>\n            <option value=\"20\">a little</option>\n            <option value=\"40\">a fair bit</option>\n            <option value=\"60\">a lot</option>\n            <option value=\"80\">almost out</option>\n          </select>\n        </p>\n\n        <p class=\"rule-line\">\n          Size\n          <input\n            type=\"range\"\n            id=\"backgroundScale\"\n            min=\"1\"\n            max=\"200\"\n            step=\"1\"\n            class=\"slider\"\n          />\n          <input\n            type=\"number\"\n            id=\"backgroundScaleNumber\"\n            min=\"1\"\n            max=\"200\"\n            step=\"1\"\n            class=\"number-input\"\n            aria-label=\"Background size, in percent\"\n          />%\n          <span class=\"search-status\" id=\"backgroundScaleValue\"></span>\n          <button type=\"button\" class=\"ghost\" id=\"backgroundScaleReset\">\n            Back to 100%\n          </button>\n        </p>\n\n\n        <h3>Post backdrop</h3>\n        <p class=\"note\">\n          A band behind the posts, so they stay readable over a busy\n          background. Dimming the background instead would dim the picture with\n          it.\n        </p>\n        <p class=\"rule-line\">\n          Shade the posts\n          <select id=\"postVeil\">\n            <option value=\"0\">not at all</option>\n            <option value=\"20\">a little</option>\n            <option value=\"40\">a fair bit</option>\n            <option value=\"60\">a lot</option>\n            <option value=\"80\">almost solid</option>\n            <option value=\"95\">solid</option>\n          </select>\n          in\n          <input type=\"color\" id=\"postVeilColour\" class=\"colour-picker\" />\n        </p>\n\n        <h3>Left sidebar</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"navExplore\" />\n            <span>Hide Explore</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navFollow\" />\n            <span>Hide Follow</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navGrok\" />\n            <span>Hide Grok</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navCreator\" />\n            <span>Hide Creator Studio</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navPremium\" />\n            <span>Hide Premium</span>\n          </label>\n        </div>\n\n        <h3>Timeline</h3>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"photoGrid\" />\n            <span>\n              Show multiple images as a grid\n              <small\n                >X shows them as a swipeable carousel now; this lays them out\n                so you can see them all at once. Close to the old layout rather\n                than a replica.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideWhatsHappening\" />\n            <span>\n              Hide the \"What's happening\" panel\n              <small\n                >Hiding a sidebar panel takes its frame and divider with\n                it.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"footerToCorner\" />\n            <span>\n              Move the Terms and Privacy links to the corner\n              <small\n                >Out of the sidebar and into the bottom right, clear of the Grok\n                and chat buttons if you've kept them.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideGrokOnPosts\" />\n            <span>Hide the Grok \"Explain this post\" button on posts</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideWhoToFollow\" />\n            <span>Hide the \"Who to follow\" panel</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"sidebarButton\" />\n            <span>\n              Show a MED-X button in the sidebar\n              <small\n                >Opens these settings over the page, without leaving X.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideRelevantPeople\" />\n            <span>\n              Hide \"Relevant people\"\n              <small>The suggested accounts beside a thread.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideTodaysNews\" />\n            <span>\n              Hide \"Today's News\"\n              <small>X's panel of summarised headlines in the sidebar.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hidePremium\" />\n            <span>Hide the \"Subscribe to Premium\" panel</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideGrok\" />\n            <span>Hide the Grok button</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideChatDock\" />\n            <span>\n              Hide the chat button\n              <small>Messages stay reachable from the left sidebar.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideNewPostsBar\" />\n            <span>\n              Hide the \"Show N posts\" bar at the top of the timeline\n              <small\n                >The new posts stay unloaded until you scroll to the top or\n                reload, so your place in the feed doesn't move.</small\n              >\n            </span>\n          </label>\n        </div>\n      </section>\n\n      </div>\n\n      <footer class=\"footer\">\n        <span class=\"storage\" id=\"storage-report\"></span>\n        <span class=\"saved\" id=\"saved\" hidden>Saved</span>\n      </footer>\n    </main>\n\n    \n    \n    <!-- bait.js calls MEDX.phrases; loading it without this works only for as\n         long as the options page never calls score(). -->\n    \n    \n    \n    \n    \n  ";
-const PANEL_CSS = "\n@font-face {\n  font-family: \"Twemoji Country Flags\";\n  src: url(\"data:font/woff2;base64,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\") format(\"woff2\");\n  font-display: swap;\n  unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0020-E007F;\n}\n\n.flag-emoji {\n  font-family: \"Twemoji Country Flags\", \"Segoe UI Emoji\", \"Apple Color Emoji\",\n    \"Noto Color Emoji\", sans-serif;\n  font-size: 15px;\n  line-height: 1;\n}\n\n:host {\n  --paper: #eceff1;\n  --surface: #ffffff;\n  --ink: #14202a;\n  --muted: #5b6b78;\n  --line: #d7dee4;\n  --accent: #1d4e89;\n  --accent-soft: #e3ecf6;\n  --signal: #8a5000;\n  --radius: 8px;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --paper: #10161b;\n    --surface: #182028;\n    --ink: #e6edf3;\n    --muted: #93a3b0;\n    --line: #2a343d;\n    --accent: #7fa9dc;\n    --accent-soft: #1b2635;\n    --signal: #d8a14a;\n  }\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.medx-panel-root {\n  margin: 0;\n  background: var(--paper);\n  color: var(--ink);\n  font: 400 14px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  font-feature-settings: \"tnum\" 1;\n}\n\n.page {\n  max-width: 1560px;\n  margin: 0 auto;\n  padding: 40px 24px 64px;\n}\n\n\n\n.columns {\n  columns: auto;\n}\n\n.columns > .pane {\n  margin: 0 0 20px;\n  width: 100%;\n}\n\n.searchbar {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  margin: 20px 0;\n}\n\n.searchbar input {\n  flex: 1;\n  padding: 10px 14px;\n  font: inherit;\n  font-size: 14px;\n  color: var(--ink);\n  background: var(--surface);\n  border: 1px solid var(--line);\n  border-radius: var(--radius);\n}\n\n.searchbar input:focus {\n  outline: none;\n  border-color: var(--accent);\n}\n\n.search-status {\n  color: var(--muted);\n  font-size: 12px;\n  white-space: nowrap;\n}\n\n.pane[hidden] {\n  display: none;\n}\n\n.masthead {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 32px;\n}\n\n\n.logo {\n  width: 128px;\n  height: 128px;\n  flex: none;\n  margin-right: -8px;\n}\n\n.masthead > div {\n  flex: 1;\n  padding-bottom: 20px;\n  border-bottom: 2px solid var(--ink);\n  margin-bottom: 28px;\n}\n\nh1 {\n  margin: 0 0 6px;\n  font-size: 25px;\n  font-weight: 600;\n  letter-spacing: -0.015em;\n}\n\n.tagline {\n  margin: 0 0 8px;\n  color: var(--accent);\n  font-size: 13px;\n}\n\n.lede {\n  margin: 0;\n  max-width: 54ch;\n  color: var(--muted);\n}\n\nh2 {\n  margin: 0 0 4px;\n  font-size: 16px;\n  font-weight: 600;\n}\n\n\nh3 {\n  margin: 26px 0 10px;\n  font-size: 16px;\n  font-weight: 650;\n  color: var(--ink);\n}\n\n\n.pane > h3:first-of-type,\n.allow-block > h3:first-child {\n  margin-top: 0;\n}\n\n.count {\n  color: var(--muted);\n  font-weight: 400;\n}\n\n.note {\n  margin: 0 0 16px;\n  max-width: 56ch;\n  color: var(--muted);\n  font-size: 13px;\n}\n\n.pane {\n  background: var(--surface);\n  border: 1px solid var(--line);\n  border-radius: var(--radius);\n  padding: 22px;\n}\n\n.wide {\n  margin-top: 0;\n}\n\n\n\n.pane.behaviour {\n  margin: 0 0 20px;\n}\n\n\n\n.behaviour-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);\n  gap: 28px;\n  align-items: center;\n}\n\n@media (max-width: 760px) {\n  .behaviour-grid {\n    grid-template-columns: 1fr;\n    gap: 16px;\n  }\n}\n\n.behaviour \n.choice {\n  margin-bottom: 18px;\n  padding: 14px 16px;\n  background: var(--surface);\n  border: 1px solid var(--line);\n  border-radius: var(--radius);\n}\n\n.behaviour .preview {\n  margin-bottom: 0;\n}\n\n\n.master {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  cursor: pointer;\n  white-space: nowrap;\n  padding-top: 4px;\n}\n\n.master input {\n  position: absolute;\n  opacity: 0;\n  width: 0;\n  height: 0;\n}\n\n.switch {\n  width: 38px;\n  height: 22px;\n  border-radius: 999px;\n  background: var(--line);\n  position: relative;\n  transition: background 0.15s ease;\n}\n\n.switch::after {\n  content: \"\";\n  position: absolute;\n  top: 3px;\n  left: 3px;\n  width: 16px;\n  height: 16px;\n  border-radius: 50%;\n  background: var(--surface);\n  transition: transform 0.15s ease;\n}\n\n.master input:checked + .switch {\n  background: var(--accent);\n}\n\n.master input:checked + .switch::after {\n  transform: translateX(16px);\n}\n\n.master input:focus-visible + .switch {\n  outline: 2px solid var(--accent);\n  outline-offset: 2px;\n}\n\n.master-text {\n  font-size: 13px;\n  color: var(--muted);\n}\n\n\n.chips {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 6px;\n  margin-bottom: 14px;\n}\n\n.chips:empty {\n  display: none;\n}\n\n.chip {\n  display: inline-flex;\n  align-items: center;\n  gap: 7px;\n  background: var(--accent-soft);\n  color: var(--accent);\n  border: none;\n  border-radius: 999px;\n  padding: 4px 8px 4px 11px;\n  font: inherit;\n  font-size: 13px;\n  cursor: pointer;\n}\n\n.chip span {\n  font-size: 15px;\n  line-height: 1;\n  opacity: 0.7;\n}\n\n.chip:hover span {\n  opacity: 1;\n}\n\n\ninput[type=\"search\"],\ninput[type=\"text\"],\nselect {\n  font: inherit;\n  color: var(--ink);\n  background: var(--surface);\n  border: 1px solid var(--line);\n  border-radius: 6px;\n  padding: 7px 10px;\n}\n\ninput[type=\"search\"] {\n  width: 100%;\n}\n\nselect {\n  padding: 4px 6px;\n}\n\ninput:focus-visible,\nselect:focus-visible,\nbutton:focus-visible {\n  outline: 2px solid var(--accent);\n  outline-offset: 1px;\n}\n\n.field-row {\n  display: flex;\n  gap: 8px;\n  margin-bottom: 14px;\n}\n\n.custom {\n  margin: 14px 0 0;\n}\n\n.custom input {\n  flex: 1;\n}\n\nbutton.ghost {\n  font: inherit;\n  color: var(--ink);\n  background: transparent;\n  border: 1px solid var(--line);\n  border-radius: 6px;\n  padding: 7px 14px;\n  cursor: pointer;\n}\n\nbutton.ghost:hover {\n  border-color: var(--muted);\n}\n\nbutton.danger:hover {\n  color: var(--signal);\n  border-color: var(--signal);\n}\n\n\n.lang-grid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));\n  gap: 2px 12px;\n  max-height: 320px;\n  overflow-y: auto;\n  padding-right: 4px;\n}\n\n.lang-grid label {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 4px 2px;\n  border-radius: 4px;\n  cursor: pointer;\n}\n\n.lang-grid label:hover {\n  background: var(--accent-soft);\n}\n\n.lang-grid .code {\n  margin-left: auto;\n  color: var(--muted);\n  font-size: 12px;\n}\n\n\n.choice,\n.checks {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  margin-bottom: 18px;\n}\n\n.choice label,\n.checks label {\n  display: flex;\n  align-items: flex-start;\n  gap: 9px;\n  cursor: pointer;\n}\n\n.checks small {\n  display: block;\n  color: var(--muted);\n  font-size: 12px;\n  margin-top: 2px;\n}\n\ninput[type=\"checkbox\"],\ninput[type=\"radio\"] {\n  margin: 2px 0 0;\n  accent-color: var(--accent);\n  flex: 0 0 auto;\n}\n\n\n.preview {\n  margin: 0 0 20px;\n}\n\n.preview-bar {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  padding: 9px 12px;\n  border: 1px solid var(--line);\n  border-radius: 6px;\n  background: var(--paper);\n  color: var(--muted);\n  font-size: 13px;\n  transition: opacity 0.18s ease, transform 0.18s ease;\n}\n\n.preview.is-removed .preview-bar {\n  opacity: 0;\n  transform: scaleY(0.4);\n}\n\n.preview-rule {\n  width: 3px;\n  align-self: stretch;\n  min-height: 16px;\n  border-radius: 2px;\n  background: currentColor;\n  opacity: 0.4;\n}\n\n.preview-actions {\n  margin-left: auto;\n}\n\n.preview-actions em {\n  font-style: normal;\n  border: 1px solid var(--line);\n  border-radius: 999px;\n  padding: 2px 10px;\n}\n\n.preview-caption {\n  margin: 8px 0 0;\n  font-size: 12px;\n  color: var(--muted);\n}\n\n\n.rule-line {\n  margin: 0 0 20px;\n  color: var(--ink);\n}\n\n.lists {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  gap: 24px;\n}\n\n@media (max-width: 760px) {\n  .lists {\n    grid-template-columns: 1fr;\n  }\n}\n\n.list {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  max-height: 240px;\n  overflow-y: auto;\n}\n\n.list li {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  padding: 6px 0;\n  border-bottom: 1px solid var(--line);\n}\n\n.list .handle {\n  font-weight: 500;\n}\n\na.handle {\n  color: var(--ink);\n  text-decoration: none;\n  border-bottom: 1px solid var(--line);\n}\n\na.handle:hover {\n  color: var(--accent);\n  border-bottom-color: var(--accent);\n}\n\n.list .why {\n  color: var(--muted);\n  font-size: 12px;\n}\n\n.list button {\n  margin-left: auto;\n  font: inherit;\n  font-size: 12px;\n  color: var(--accent);\n  background: none;\n  border: none;\n  padding: 2px 4px;\n  cursor: pointer;\n  text-decoration: underline;\n}\n\n.empty {\n  color: var(--muted);\n  font-size: 13px;\n  padding: 6px 0;\n}\n\n\n.footer {\n  display: flex;\n  align-items: center;\n  gap: 14px;\n  margin-top: 24px;\n}\n\n.saved {\n  color: var(--accent);\n  font-size: 13px;\n}\n\n@media (prefers-reduced-motion: reduce) {\n  * {\n    transition: none !important;\n  }\n}\n\n\n.bait-rules {\n  display: grid;\n  gap: 2px;\n}\n\n.bait-rule {\n  display: grid;\n  grid-template-columns: auto 1fr auto;\n  align-items: baseline;\n  gap: 10px;\n  padding: 8px 4px;\n  border-bottom: 1px solid var(--line);\n}\n\n.bait-rule:last-child {\n  border-bottom: none;\n}\n\n.bait-rule .hint {\n  display: block;\n  color: var(--muted);\n  font-size: 12px;\n  margin-top: 2px;\n}\n\n.bait-rule.off > * {\n  opacity: 0.55;\n}\n\n.bait-rule .weight {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  color: var(--muted);\n  font-size: 12px;\n}\n\n.lang-grid.disabled {\n  opacity: 0.45;\n}\n\n.lang-grid.disabled label {\n  cursor: default;\n}\n\n.lang-grid.disabled label:hover {\n  background: none;\n}\n\n.choice.disabled {\n  opacity: 0.45;\n}\n\n.choice.disabled label {\n  cursor: default;\n}\n\n.allow-block {\n  margin: 22px 0;\n  padding-top: 18px;\n  border-top: 1px solid var(--line);\n  max-width: 46ch;\n}\n\n\n.bait-rule .hint + .weight {\n  margin-top: 4px;\n}\n\n.bait-rule label > .weight {\n  display: flex;\n}\n\n.inline-check {\n  display: inline-flex;\n  align-items: center;\n  gap: 5px;\n  margin-right: 12px;\n  cursor: pointer;\n}\n\n.link-button {\n  font: inherit;\n  font-size: 12px;\n  color: var(--accent);\n  background: none;\n  border: none;\n  padding: 0;\n  cursor: pointer;\n  text-decoration: underline;\n}\n\n.colour-picker {\n  width: 30px;\n  height: 24px;\n  padding: 0;\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  background: none;\n  cursor: pointer;\n}\n\n.colour-picker::-webkit-color-swatch-wrapper {\n  padding: 2px;\n}\n\n.colour-picker::-webkit-color-swatch {\n  border: none;\n  border-radius: 3px;\n}\n\n\n.sub-checks {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  margin: -2px 0 4px 26px;\n  padding-left: 12px;\n  border-left: 1px solid var(--line);\n}\n\n.saved.error {\n  color: var(--signal);\n  font-weight: 500;\n}\n\n.storage {\n  color: var(--muted);\n  font-size: 12px;\n  margin-right: auto;\n}\n\n.storage.near {\n  color: var(--signal);\n}\n\n.storage.over {\n  color: var(--signal);\n  font-weight: 600;\n}\n\n\n.section-rule {\n  border: 0;\n  border-top: 1px solid var(--line);\n  margin: 0 0 20px;\n}\n\n\n.field-row + .section-rule {\n  margin-top: 34px;\n}\n\n\n.field-row + .note {\n  margin-top: 16px;\n}\n\n\n.checks label small,\n.sub-checks label small,\n.rule-line .hint {\n  display: block;\n  margin-top: 4px;\n  color: var(--muted);\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.rule-line .hint {\n  margin-top: 6px;\n}\n\n.experimental {\n  color: #d93025;\n  font-weight: 700;\n}\n\n@media (prefers-color-scheme: dark) {\n  .experimental {\n    color: #ff6b5e;\n  }\n}\n\n\n.wide-list {\n  max-height: none;\n  overflow: visible;\n}\n\n\n\n.wide-list:has(li:nth-child(8)) {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));\n  column-gap: 24px;\n}\n\n\n.pane.behaviour .allow-block {\n  max-width: none;\n}\n\n\n.wide-list li {\n  gap: 8px;\n}\n\n\n.wide-list li > .handle {\n  min-width: 0;\n  flex: 1 1 auto;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.wide-list li button {\n  flex: none;\n}\n\n\n.wide-list:has(li:nth-child(31)) {\n  max-height: 320px;\n  overflow-y: auto;\n}\n\n\nsection[aria-labelledby=\"h-langs\"] {\n  border-left: 4px solid #4a9dd9;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-flags\"] {\n  border-left: 4px solid #d9534f;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-location\"] {\n  border-left: 4px solid #5f8a3c;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-watch\"] {\n  border-left: 4px solid #a86fd0;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-signals\"] {\n  border-left: 4px solid #c62828;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-shovel\"] {\n  border-left: 4px solid #7a5230;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-annoy\"] {\n  border-left: 4px solid #3fae95;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-quotes\"] {\n  border-left: 4px solid #7f8fa6;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-verified\"] {\n  border-left: 4px solid #5c7cfa;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-media\"] {\n  border-left: 4px solid #d67ab1;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-bait\"] {\n  border-left: 4px solid #c9a227;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-clutter\"] {\n  border-left: 4px solid #8a939b;\n  padding-left: 14px;\n}\n\nsection.pane.behaviour {\n  border-left: 4px solid var(--accent);\n  padding-left: 14px;\n}\n\n\nsection[aria-labelledby=\"h-source\"] {\n  border-left: 4px solid #e2761b;\n  padding-left: 14px;\n}\n\n\n.tabs {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 4px;\n  margin: 26px 0 18px;\n  border-bottom: 1px solid var(--line);\n}\n\n.tabs button {\n  appearance: none;\n  background: none;\n  border: none;\n  border-bottom: 2px solid transparent;\n  margin-bottom: -1px;\n  padding: 10px 16px;\n  font: inherit;\n  font-size: 14px;\n  color: var(--muted);\n  cursor: pointer;\n  border-radius: 6px 6px 0 0;\n}\n\n.tabs button:hover {\n  color: var(--ink);\n  background: var(--surface);\n}\n\n.tabs button.on {\n  color: var(--ink);\n  border-bottom-color: var(--accent);\n  font-weight: 600;\n}\n\n@media (max-width: 760px) {\n  .tabs button {\n    padding: 9px 11px;\n    font-size: 13px;\n  }\n}\n\n\n.pane {\n  position: relative;\n}\n\n.strip-colour {\n  position: absolute;\n  top: 16px;\n  right: 18px;\n  display: flex;\n  align-items: center;\n  gap: 6px;\n}\n\n.strip-colour button {\n  font-size: 12px;\n  padding: 4px 8px;\n}\n\n\nlabel small ul {\n  margin: 6px 0 0;\n  padding-left: 18px;\n}\n\nlabel small li {\n  margin-bottom: 4px;\n}\n\nlabel small li:last-child {\n  margin-bottom: 6px;\n}\n\n\n.number-input {\n  width: 64px;\n  padding: 4px 6px;\n  font: inherit;\n  text-align: right;\n}\n\n\n.file-button {\n  display: inline-block;\n  cursor: pointer;\n  padding: 6px 12px;\n  border: 1px solid var(--line);\n  border-radius: var(--radius);\n}\n\n\n\n\nhtml.medx-embedded {\n  overscroll-behavior: contain;\n  background: var(--paper);\n}\n\n\n\nhtml.medx-embedded::-webkit-scrollbar {\n  width: 12px;\n  background: var(--paper);\n}\n\nhtml.medx-embedded::-webkit-scrollbar-corner {\n  background: var(--paper);\n}\n\nhtml.medx-embedded::-webkit-scrollbar-track {\n  margin: 16px 0;\n  background: var(--paper);\n}\n\nhtml.medx-embedded::-webkit-scrollbar-thumb {\n  background-color: var(--muted);\n  border: 3px solid transparent;\n  border-radius: 999px;\n  background-clip: padding-box;\n}\n\nhtml.medx-embedded::-webkit-scrollbar-thumb:hover {\n  background-color: var(--ink);\n}\n";
+const PANEL_HTML = "\n    <main class=\"page\">\n      <header class=\"masthead\">\n        <img class=\"logo\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAWfmNhQlgAABZ+anVtYgAAAB5qdW1kYzJwYQARABCAAACqADibcQNjMnBhAAAAFlhqdW1iAAAAR2p1bWRjMm1hABEAEIAAAKoAOJtxA3VybjpjMnBhOjY4OWY0MDk0LWQxNDctNGM2NC1hNGJiLTdiYzFjYzE0YTUwZQAAAAOTanVtYgAAAClqdW1kYzJhcwARABCAAACqADibcQNjMnBhLmFzc2VydGlvbnMAAAAAuGp1bWIAAABEanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5pbmdyZWRpZW50LnYzAAAAABhjMnNoCz4XMLyIWG/1nMuR2NNX1gAAAGxjYm9yo2lkYzpmb3JtYXRpaW1hZ2UvcG5namluc3RhbmNlSUR4LHhtcDppaWQ6NjNkOWMxMzYtODFiOS00NzcxLTg1OWUtNmU5ZDYyYjE5NTI1bHJlbGF0aW9uc2hpcGhwYXJlbnRPZgAAAeJqdW1iAAAAQWp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuYWN0aW9ucy52MgAAAAAYYzJzaEbQ92xsHZSfe3JGbRNsCf4AAAGZY2JvcqJnYWN0aW9uc4KiZmFjdGlvbmtjMnBhLm9wZW5lZGpwYXJhbWV0ZXJzoWtpbmdyZWRpZW50c4GiY3VybHgtc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5pbmdyZWRpZW50LnYzZGhhc2hYIP9lM4RK3BRA0mKZtCMC9SToyY04ZIoyrxFKV+r5eSGNpGZhY3Rpb254HWNvbS5hbnRocm9waWMuY2xhdWRlLnByb3ZpZGVkanBhcmFtZXRlcnOheB9jb20uYW50aHJvcGljLm9yaWdpbi1jb25maWRlbmNlZ3Vua25vd25rZGVzY3JpcHRpb254ZkNsYXVkZSBwcm92aWRlZCB0aGlzIGZpbGUgYXQgdGhlIHJlcXVlc3Qgb2YgYSB1c2VyIGFuZCBtYXkgaGF2ZSBjcmVhdGVkIG9yIG1vZGlmaWVkIHRoZSBmaWxlIGNvbnRlbnRzLm1zb2Z0d2FyZUFnZW50oWRuYW1lZkNsYXVkZXJhbGxBY3Rpb25zSW5jbHVkZWT1AAAAyGp1bWIAAABAanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5oYXNoLmRhdGEAAAAAGGMyc2ieHXFQtBwh9bCb05HAzBCuAAAAgGNib3KlY2FsZ2ZzaGEyNTZjcGFkTQAAAAAAAAAAAAAAAABkaGFzaFggOlYuu1BoNq/uK7e3MbfsQpoIsFmYIw9MHp4tYITco11kbmFtZW5qdW1iZiBtYW5pZmVzdGpleGNsdXNpb25zgaJlc3RhcnQYIWZsZW5ndGgZFooAAAI+anVtYgAAACdqdW1kYzJjbAARABCAAACqADibcQNjMnBhLmNsYWltLnYyAAAAAg9jYm9ypWNhbGdmc2hhMjU2aXNpZ25hdHVyZXhNc2VsZiNqdW1iZj0vYzJwYS91cm46YzJwYTo2ODlmNDA5NC1kMTQ3LTRjNjQtYTRiYi03YmMxY2MxNGE1MGUvYzJwYS5zaWduYXR1cmVqaW5zdGFuY2VJRHgseG1wOmlpZDozMDEwNjc5ZC0xY2NiLTQwOWYtODliYi00YTIxZTJlYWUzZmFyY3JlYXRlZF9hc3NlcnRpb25zg6JjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFgg/2UzhErcFEDSYpm0IwL1JOjJjThkijKvEUpX6vl5IY2iY3VybHgqc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5hY3Rpb25zLnYyZGhhc2hYIL7XcdXie3R7LeGQrTETXHKziSkEWYuT6oosDhE6LFTJomN1cmx4KXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaGFzaC5kYXRhZGhhc2hYIOrakddzy4stf5Uf6K3s6hgfGT4zHyRCTS1iliEmSBdRdGNsYWltX2dlbmVyYXRvcl9pbmZvo2RuYW1lb0FudGhyb3BpYyBGaWxlc2d2ZXJzaW9uZTEuMC4wa3NwZWNWZXJzaW9uZTIuNC4wAAAQOGp1bWIAAAAoanVtZGMyY3MAEQAQgAAAqgA4m3EDYzJwYS5zaWduYXR1cmUAAAAQCGNib3LShFkCEqIBJhghWQIKMIICBjCCAY2gAwIBAgIUQOWgCu7COdC+uIP6BkIFPWdVEwAwCgYIKoZIzj0EAwMwSTEXMBUGA1UEChMOQW50aHJvcGljLCBQQkMxLjAsBgNVBAMTJUFudGhyb3BpYyBDb250ZW50IENyZWRlbnRpYWxzIFJvb3QgQ0EwHhcNMjYwODA3MTg0MzU2WhcNMjgwODA2MTk0MzU2WjBEMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEpMCcGA1UEAxMgQW50aHJvcGljIENsYXVkZSBDb250ZW50IFNpZ25pbmcwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASYegpry1AYBRTVNL1CpTlbROnY3dey+UrsF9C3phYrATN3ZHf93Mo8RQN0KOUuOn19P4oWNFWe5n2/She9N7eTo1gwVjAOBgNVHQ8BAf8EBAMCB4AwFQYDVR0lBA4wDAYKKwYBBAGD6F4CATAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFM5R4gSBTmRbI/jjxM+aPpzB11zCMAoGCCqGSM49BAMDA2cAMGQCMDFzHRSeAXrSy1WOzkbhPZ6Km2wGTmZ/2gK18k8BQGXyqz88Rdrz6CTX9flAnYNVxgIwcF9c3fVhqmJKpi+UhasNUMko69cyX6STPfta3Q8EjyzDjzoyrol46FP6VFHhvUcJoWNwYWRZDZ4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA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\" alt=\"\" width=\"128\" height=\"128\" />\n        <div>\n          <h1>MED-X</h1>\n          <p class=\"tagline\">More Enjoyable Doomscrolling on X</p>\n          <p class=\"lede\">\n            Make X a less miserable place to exist, with tons of options to\n            tailor your experience to your own personal preference.\n          </p>\n        </div>\n        <label class=\"master\">\n          <input type=\"checkbox\" id=\"enabled\" />\n          <span class=\"switch\" aria-hidden=\"true\"></span>\n          <span class=\"master-text\" id=\"enabled-label\">Filtering on</span>\n        </label>\n      </header>\n\n\n\n      <div class=\"searchbar\">\n        <input\n          type=\"search\"\n          id=\"settings-search\"\n          placeholder=\"Search settings - try &quot;flag&quot;, &quot;reply&quot;, &quot;color&quot;\"\n          autocomplete=\"off\"\n          aria-label=\"Search settings\"\n        />\n        <span class=\"search-status\" id=\"search-status\"></span>\n      </div>\n\n      <!-- Filled from the sections themselves, so a new section gets a tab\n           without anyone having to remember to add one here. -->\n      <div class=\"tabs\" id=\"tabs\" role=\"tablist\"></div>\n\n      <div class=\"columns\" id=\"sections\">\n      <section class=\"pane behaviour\" aria-labelledby=\"h-behaviour\">\n        <h2 id=\"h-behaviour\">Global</h2>\n\n        <div class=\"behaviour-grid\">\n          <div class=\"choice\">\n            <p class=\"note\" style=\"margin: 0 0 10px\">\n              The default for every filter. Each filter can override it in its\n              own section.\n            </p>\n            <label>\n              <input type=\"radio\" name=\"mode\" value=\"collapse\" />\n              <span>Collapse it to a bar I can expand</span>\n            </label>\n            <label>\n              <input type=\"radio\" name=\"mode\" value=\"remove\" />\n              <span>Remove it from the timeline</span>\n            </label>\n          </div>\n\n          <div class=\"preview\" id=\"preview\">\n            <div class=\"preview-bar\">\n              <span class=\"preview-rule\"></span>\n              <span class=\"preview-label\" id=\"preview-label\">Post in Japanese</span>\n              <span class=\"preview-who\">@example</span>\n              <span class=\"preview-actions\"><em>Show</em></span>\n            </div>\n            <p class=\"preview-caption\" id=\"preview-caption\">\n              How a hidden post will look in your timeline.\n            </p>\n          </div>\n        </div>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"peekKey\" />\n            <span>\n              Hold Alt to reveal hidden posts\n              <small\n                >Shows everything collapsed to a bar for as long as you hold it.\n                Posts set to be removed stay gone, except a thread's main post.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"altNote\" />\n            <span>\n              Show a note while Alt is held\n              <small\n                >A small box at the bottom of the screen saying \"Alt Key Held\",\n                for as long as it is. Alt reveals hidden posts, and zooms and\n                moves pictures.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"showBadge\" />\n            <span>\n              Show the MED-X button on posts\n              <small\n                >The small logo in the corner of each post. Click it for the\n                post's bait score and quick actions.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"badgeGreyscale\" />\n              <span>\n                Greyscale\n                <small>Makes the button monochrome instead of colored.</small>\n              </span>\n            </label>\n          </div>\n          <label>\n            <input type=\"checkbox\" id=\"exemptAnsweredByAuthor\" />\n            <span>\n              Never hide a reply the poster answered\n              <small\n                >If whoever started the thread replied to it, it's part of the\n                conversation they wanted - so it stays, whatever else would have\n                hidden it.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"exemptFollowing\" />\n            <span>\n              Never hide accounts I follow\n              <small\n                >Makes accounts you follow exempt from all sections at\n                once.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Muted accounts <span class=\"count\" id=\"muted-count\">0</span></h3>\n          <p class=\"note\">\n            Hidden for a while, then back on their own. Mute one from the MED-X\n            button on any of its posts.\n          </p>\n          <p class=\"rule-line\">\n            Mute for\n            <select id=\"muteAccountDays\"></select>\n          </p>\n          <p class=\"rule-line\">\n            Hide muted accounts by\n            <select id=\"mutedModeOverride\">\n              <option value=\"\">using my default</option>\n              <option value=\"collapse\">collapsing the post to a bar</option>\n              <option value=\"remove\">removing the post entirely</option>\n            </select>\n          </p>\n          <ul class=\"list wide-list\" id=\"muted-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"muted-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"muted-add\">Mute</button>\n          </div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"global-allowed-count\">0</span></h3>\n          <p class=\"note\">\n            Exempt from every section, whether or not you follow them.\n          </p>\n          <ul class=\"list wide-list\" id=\"global-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"global-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"global-allow-add\">Add</button>\n          </div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3 id=\"h-transfer\">Transfer settings</h3>\n          <p class=\"note\">\n            Save your settings to a file and load them in another browser or on\n            another computer. Browsers signed into the same Chrome profile\n            already share settings on their own - this is for everything else,\n            or a backup before you experiment.\n          </p>\n          <p class=\"note\">\n            Includes all your settings, muted accounts, muted quoted posts and\n            your X muted words. Location and bio caches are left out; they\n            rebuild as you browse.\n          </p>\n          <div class=\"checks\">\n            <label>\n              <input type=\"checkbox\" id=\"backupIncludePicture\" />\n              <span>\n                Include my background picture\n                <small>Can be several megabytes.</small>\n              </span>\n            </label>\n          </div>\n          <p class=\"rule-line\">\n            <button type=\"button\" id=\"backupExport\">Save to a file</button>\n            <label class=\"ghost file-button\" for=\"backupImportFile\">Load from a file</label>\n            <input type=\"file\" id=\"backupImportFile\" accept=\".json,application/json\" hidden />\n            <span class=\"search-status\" id=\"backupStatus\"></span>\n          </p>\n        </div>\n      </section>\n      <section class=\"pane wide\" aria-labelledby=\"h-langs\">\n        <h2 id=\"h-langs\">Languages to hide</h2>\n        <p class=\"rule-line\" style=\"margin-top: 18px\">\n          Hide these by\n          <select id=\"langModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n\n        <p class=\"note\">\n          These options hide languages you don't want to see from appearing in\n          your feed.\n        </p>\n        <p class=\"note\" id=\"lang-count\">Nothing selected yet.</p>\n\n        <div class=\"chips\" id=\"chips\"></div>\n\n        <div class=\"field-row\">\n          <input\n            type=\"search\"\n            id=\"lang-search\"\n            placeholder=\"Search languages\"\n            autocomplete=\"off\"\n          />\n        </div>\n\n        <div class=\"lang-grid\" id=\"lang-grid\"></div>\n\n        <div class=\"field-row custom\">\n          <input\n            type=\"text\"\n            id=\"custom-code\"\n            placeholder=\"Other code, e.g. yo\"\n            maxlength=\"8\"\n            autocomplete=\"off\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"custom-add\">Add</button>\n        </div>\n\n        <hr class=\"section-rule\" />\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"fallbackEnabled\" />\n            <span>\n              Guess the language when X doesn't label one\n              <small>Uses Chrome's built-in detector on untagged posts.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"shortRecheck\" />\n            <span>\n              Double-check very short posts\n              <small\n                >No detector is reliable on a few words - X calls \"Colorado\"\n                Portuguese and Chrome calls it Spanish. Short posts are hidden\n                only when the script backs the tag up, or Chrome independently\n                lands on the same language.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Treat a post as short below\n              <select id=\"shortMaxChars\"></select>\n              characters.\n            </p>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-annoy\">\n        <h2 id=\"h-annoy\">General annoyances</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"annoyModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n        <p class=\"note\">\n          Judged from the post's own words, with nothing to do with who wrote it.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hashtagOnly\" />\n            <span>\n              Hide posts that are only hashtags\n              <small\n                >Mentions, links and emoji count as filler too, so\n                \"#deal #sale @brand \ud83d\udd25\" qualifies. A post with any actual words\n                in it doesn't.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"selfPromo\" />\n            <span>\n              The thread author plugging themselves\n              <small\n                >Their reply right under their own post when it's a plug - \"this\n                blew up, anyway check out my...\" with a link, asking for\n                follows, likes or reposts, like \"follow for more\" or \"please like\n                this post\", or quoting another of their own posts. Replies giving\n                a source or the full video are left alone, as is anything further\n                down the thread.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"aiLabels\" />\n            <span>\n              Hide posts X tags as AI-made\n              <small\n                >\"Made with Grok\", \"Generated with AI\" and similar. Matched on\n                the label X attaches, not the post's own words, so a post about\n                AI isn't caught.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"emojiRepeat\" />\n            <span>\n              Hide posts repeating the same emoji\n              <small>Like \ud83d\udd25\ud83d\udd25\ud83d\udd25 or \ud83d\ude2d \ud83d\ude2d \ud83d\ude2d - spaces don't break the run.</small>\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Repeated\n              <select id=\"emojiRepeatRun\"></select>\n              times or more.\n            </p>\n          </div>\n\n          <label>\n            <input type=\"checkbox\" id=\"minLikes\" />\n            <span>\n              Hide posts with few likes\n              <small\n                >Only from accounts you don't follow, and only once a post has\n                had time to collect them.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Hide under\n              <select id=\"minLikesCount\"></select>\n              likes, once it is at least\n              <select id=\"minLikesAge\"></select>\n              minutes old.\n            </p>\n\n            <label>\n              <input type=\"checkbox\" id=\"minLikesHomeOnly\" />\n              <span>\n                Only on the timeline\n                <small\n                  >Leaves replies alone in a thread you've opened, where a low\n                  like count doesn't say much.</small\n                >\n              </span>\n            </label>\n          </div>\n\n          <label>\n            <input type=\"checkbox\" id=\"fastReplies\" />\n            <span>\n              Hide replies posted within seconds of the post\n              <small\n                >Faster than reading and typing. The thread's own author is\n                exempt - continuing your own thread quickly is normal.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Within\n              <select id=\"fastReplySeconds\"></select>\n              seconds counts as too fast.\n            </p>\n          </div>\n\n        </div>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"punctuation\" />\n            <span>Hide posts with a long run of question marks</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"exclamation\" />\n            <span>Hide posts with a long run of exclamation marks</span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"includeExclamation\" />\n              <span>\n                Count a mix of both as a run\n                <small>So \"?!?!?!\" counts toward either rule above.</small>\n              </span>\n            </label>\n          </div>\n        </div>\n\n        <div class=\"sub-checks\">\n          <p class=\"rule-line\" style=\"margin: 0\">\n            For both, a run means\n            <select id=\"punctuationRun\"></select>\n            or more in a row.\n          </p>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"annoy-allowed-count\">0</span></h3>\n          <p class=\"note\">Exempt from every rule in this section.</p>\n          <ul class=\"list\" id=\"annoy-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"annoy-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"annoy-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-location\">\n        <h2 id=\"h-location\">Profile location</h2>\n        <p class=\"note\">\n          Matches the location an account typed into their own profile, read\n          from the timeline data X already sends. It's free text, so it's\n          unreliable in both directions - plenty of accounts leave it blank, and\n          anyone can put anything in it. This is not X's inferred country.\n        </p>\n\n        <p class=\"rule-line\">\n          When an account's location matches,\n          <select id=\"locationAction\">\n            <option value=\"off\">do nothing</option>\n            <option value=\"\">use my default</option>\n            <option value=\"collapse\">collapse the post to a bar</option>\n            <option value=\"remove\">remove the post entirely</option>\n          </select>\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"showBasedIn\" />\n            <span>\n              Show \"Account based in\" on profiles\n              <small\n                ><strong\n                  >One-time setup: open \"About this account\" on any profile\n                  once.</strong\n                >\n                That request is copied and reused for everyone else - X gives no\n                other way to ask. After that it's looked up when you hover or\n                open a profile and remembered afterwards, so it costs one\n                request per account rather than one per post.</small\n              >\n            </span>\n          </label>\n        </div>\n\n\n        <div class=\"chips\" id=\"location-chips\"></div>\n\n        <div class=\"field-row custom\">\n          <input\n            type=\"text\"\n            id=\"location-term-input\"\n            placeholder=\"Text to match, e.g. T\u00fcrkiye\"\n            maxlength=\"40\"\n            autocomplete=\"off\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"location-term-add\">Add</button>\n        </div>\n        <p class=\"note\">\n          Matching ignores case and accents, so \"turkiye\" catches \"T\u00fcrkiye\". It\n          won't connect different words though - \"Turkey\", \"T\u00fcrkiye\" and\n          \"Istanbul\" are three separate terms.\n        </p>\n\n        <div class=\"allow-block\">\n          <h3>Locations seen <span class=\"count\" id=\"location-seen-count\">0</span></h3>\n          <p class=\"note\">\n            What accounts in your timeline have actually written, most common\n            first. Click one to add it as a term.\n          </p>\n          <div class=\"chips\" id=\"location-seen\"></div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"location-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"location-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"location-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"location-allow-add\">Add</button>\n          </div>\n        </div>\n\n        <button type=\"button\" class=\"ghost danger\" id=\"clear-locations\">\n          Clear cached locations\n        </button>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-watch\">\n        <h2 id=\"h-watch\">Post highlighter</h2>\n        <p class=\"note\">\n          Posts get a colored background and the matching words are marked.\n          Both the post's text and the author's display name are searched.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"watchEnabled\" />\n            <span>Highlight posts containing my words</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"watchOverride\" />\n            <span>\n              Show them even if a filter would hide them\n              <small\n                >Worth keeping on, otherwise a highlighted post could be\n                hidden by another filter before you ever see it.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"watchMarkWords\" />\n            <span>\n              Mark the matching words as well\n              <small\n                >With this off, a matching post still gets its background and\n                edge color, but the words themselves are left alone.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"watchSkipTranslated\" />\n            <span>\n              Skip posts translated from a language I hide\n              <small\n                >X's translation can contain a term you watch for even though\n                the post itself is in a language you chose not to see.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"bait-rules\" id=\"watch-terms\"></div>\n        <div class=\"field-row custom\">\n          <input\n            type=\"text\"\n            id=\"watch-term-input\"\n            placeholder=\"Word or phrase to watch for\"\n            maxlength=\"100\"\n            autocomplete=\"off\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"watch-term-add\">Add</button>\n        </div>\n\n        <p class=\"note\">\n          <strong>Whole word</strong>: when turned off, it matches the word\n          inside other words, so \"art\" also hits \"hearts\" and \"particle\". When\n          on, it only highlights the word if it's completely standalone from\n          other words.\n        </p>\n\n        <div class=\"allow-block\">\n          <h3>Accounts to highlight <span class=\"count\" id=\"watch-account-count\">0</span></h3>\n          <p class=\"note\">\n            Every post from these accounts gets its color, whatever it says.\n          </p>\n          <div class=\"bait-rules\" id=\"watch-accounts\"></div>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"watch-account-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"watch-account-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-signals\">\n        <h2 id=\"h-signals\">Account Red Flags</h2>\n        <p class=\"rule-line\">\n          Hide at a score of\n          <select id=\"signalsThreshold\"></select>\n          or higher, by\n          <select id=\"signalsModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>.\n        </p>\n\n\n        <p class=\"note\">\n          These describe behaviour that bots share with new accounts and\n          enthusiastic people - none of them means \"bot\" on its own, which is\n          why each is scored and named rather than rolled into one number. Watch\n          the scores before switching hiding on. You can also just use this\n          section to\n          hide people that you find insufferable and would never want to\n          associate with.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"signalsHide\" />\n            <span>\n              Hide posts from accounts that reach the score below\n              <small>Off by default. Accounts with no data score nothing.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"alwaysHideNoAvatar\" />\n            <span>\n              Always hide accounts with no profile picture\n              <small\n                >Outright, whatever the score says. The scored rule below is\n                left alone, so what a default avatar contributes to everything\n                else doesn't change.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"bait-rules\" id=\"signals-rules\"></div>\n\n        <div class=\"sub-checks\" id=\"near-dupe-extras\">\n          <label>\n            <input type=\"checkbox\" id=\"nearDupesPhrases\" />\n            <span>\n              Also match on shared distinctive phrases\n              <small\n                >Catches accounts working from one script, whatever the\n                percentage says. Aggressive: it cannot tell them from two\n                people describing the same event, so replies to a popular post\n                will get caught.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"nearDupesBoth\" />\n            <span>\n              Hide the reply that was copied too\n              <small\n                >The original post that the detector deems copied is usually\n                also a bot reply.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"signals-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"signals-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"signals-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"signals-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-shovel\">\n        <h2 id=\"h-shovel\">Shovel accounts</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"shovelModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n\n        <p class=\"note\">\n          Accounts whose name says what they are: reposters, aggregators and\n          content mills. Matched whole-word, so \"anon\" doesn't catch\n          \"anonymous\".\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"shovelEnabled\" />\n            <span>Hide posts from accounts with these words in their name</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"shovelCheckHandle\" />\n            <span>\n              Check the @handle too\n              <small>Not just the display name.</small>\n            </span>\n          </label>\n        </div>\n\n        <div class=\"lang-grid\" id=\"shovel-words\"></div>\n\n        <div class=\"field-row custom\">\n          <input\n            type=\"text\"\n            id=\"shovel-word-input\"\n            placeholder=\"Another word\"\n            maxlength=\"30\"\n            autocomplete=\"off\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"shovel-word-add\">Add</button>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"shovel-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"shovel-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"shovel-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"shovel-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-flags\">\n        <h2 id=\"h-flags\">Flags in names and bios</h2>\n        <p class=\"note\">\n          Matches flag emoji in an account's display name.\n        </p>\n\n        <p class=\"rule-line\">\n          When an account has a matching flag,\n          <select id=\"flagAction\">\n            <option value=\"off\">do nothing</option>\n            <option value=\"\">use my default</option>\n            <option value=\"collapse\">collapse the post to a bar</option>\n            <option value=\"remove\">remove the post entirely</option>\n          </select>\n        </p>\n\n        <div class=\"choice\" id=\"flag-modes\">\n          <label>\n            <input type=\"radio\" name=\"flagMode\" value=\"any\" />\n            <span>Any flag at all</span>\n          </label>\n          <label>\n            <input type=\"radio\" name=\"flagMode\" value=\"only\" />\n            <span>Only the flags I pick below</span>\n          </label>\n          <label>\n            <input type=\"radio\" name=\"flagMode\" value=\"except\" />\n            <span>Every flag except the ones I pick below</span>\n          </label>\n        </div>\n\n        <div class=\"chips\" id=\"flag-chips\"></div>\n\n        <div class=\"field-row\">\n          <input\n            type=\"search\"\n            id=\"flag-search\"\n            placeholder=\"Search flags\"\n            autocomplete=\"off\"\n          />\n        </div>\n        <p class=\"note\" id=\"flag-hint\"></p>\n        <div class=\"lang-grid\" id=\"flag-grid\"></div>\n\n        <div class=\"checks\" style=\"margin-top: 18px\">\n          <label>\n            <input type=\"checkbox\" id=\"flagsRestoreEmoji\" />\n            <span>\n              Show flag emoji properly on X\n              <small\n                >X removed Twemoji, so flags no longer have an image and just\n                show as text like \"PR\" for Puerto Rico. This option restores\n                the flags.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"flagsCheckBio\" />\n            <span>\n              Also check bios\n              <small\n                >Bios aren't in the timeline. This only covers accounts whose\n                profile or hover card you've already loaded, and fills in as you\n                browse.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"flagsCountryNames\" />\n            <span>\n              Also match country names written out\n              <small\n                >\"Ukraine\", \"Free Palestine\", and demonyms like \"Syrian\" or\n                \"Americans\" - not just the flag. Countries that are also common\n                names - Jordan, Georgia, Chad - are left out.</small\n              >\n            </span>\n          </label>\n\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"flagsCountryNamesMatchFlags\" />\n              <span>\n                Only countries whose flags I'm hiding\n                <small\n                  >Follows the flag choice above, so this doesn't quietly widen\n                  to every country in the world.</small\n                >\n              </span>\n            </label>\n          </div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"flag-allowed-count\">0</span></h3>\n          <p class=\"note\">\n            Exempt from flag filtering whatever their name says. Shift-clicking a\n            hidden post's bar adds the account here. Separate from the never-mute\n            list above, which only affects language tallies.\n          </p>\n          <ul class=\"list\" id=\"flag-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"flag-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"flag-allow-add\">Add</button>\n          </div>\n        </div>\n\n        <p class=\"note\" id=\"bio-count\"></p>\n        <button type=\"button\" class=\"ghost\" id=\"clear-bios\">Clear cached bios</button>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-quotes\">\n        <h2 id=\"h-quotes\">Quote tweets</h2>\n        <p class=\"note\">\n          A quote tweet is a single post as far as the timeline is concerned, so\n          hiding one takes the commentary with it.\n        </p>\n\n        <div class=\"allow-block\" style=\"margin-top: 0\">\n          <div class=\"checks\">\n            <label>\n              <input type=\"checkbox\" id=\"muteWordsInQuotes\" />\n              <span>\n                Apply my X muted words to quoted posts\n                <small\n                  >X mutes the post you see but not the post quoted inside it.\n                  Your list is picked up when you visit Settings > Privacy and\n                  safety > Mute and block > Muted words \u2014 it can't be read any\n                  other way.</small\n                >\n              </span>\n            </label>\n            <div class=\"sub-checks\">\n              <p class=\"rule-line\" style=\"margin: 0\">\n                Hide these by\n                <select id=\"quoteMutedModeOverride\">\n                  <option value=\"\">using my default</option>\n                  <option value=\"collapse\">collapsing the post to a bar</option>\n                  <option value=\"remove\">removing the post entirely</option>\n                </select>\n              </p>\n            </div>\n          </div>\n\n          <h3>Muted quoted posts <span class=\"count\" id=\"snooze-count\">0</span></h3>\n          <p class=\"note\">\n            Alt-click the embedded card on any quote tweet to mute that quoted\n            post - every post quoting it disappears until the date runs out.\n            You can also mute a quoted post from the MED-X Corner Menu.\n          </p>\n\n          <p class=\"rule-line\">\n            New mutes last\n            <select id=\"snoozeDays\"></select>\n          </p>\n          <div class=\"sub-checks\">\n            <p class=\"rule-line\" style=\"margin: 0\">\n              Hide these by\n              <select id=\"snoozedModeOverride\">\n                <option value=\"\">using my default</option>\n                <option value=\"collapse\">collapsing the post to a bar</option>\n                <option value=\"remove\">removing the post entirely</option>\n              </select>\n            </p>\n          </div>\n\n          <ul class=\"list\" id=\"snooze-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"snooze-input\"\n              placeholder=\"Paste a post URL to mute it\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"snooze-add\">Mute</button>\n          </div>\n        </div>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"allowSelfQuotes\" />\n            <span>\n              Keep quote tweets where someone is quoting themselves\n              <small\n                >Continuing their own thread rather than amplifying a stranger.\n                Their own post is still checked normally in other filters.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"checkQuotes\" />\n            <span>\n              Check the quoted post's language\n              <small>Applies your hidden-language list to the quoted half.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"flagsCheckQuotes\" />\n            <span>\n              Check the quoted account's name for flags\n            </span>\n          </label>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-verified\">\n        <h2 id=\"h-verified\">Account types</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"verifiedModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"labelParody\" />\n            <span>Hide parody accounts</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"labelCommentary\" />\n            <span>Hide commentary accounts</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"labelFan\" />\n            <span>Hide fan accounts</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"labelAutomated\" />\n            <span>\n              Hide automated accounts\n              <small>Accounts X marks as bots - the honest ones, at least.</small>\n            </span>\n          </label>\n        </div>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideBlue\" />\n            <span>\n              Hide blue checkmark users\n              <small>Paid subscribers.</small>\n            </span>\n          </label>\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"blueRepliesOnly\" />\n              <span>\n                Only their replies\n                <small\n                  >Only removes blue check users in the replies.</small>\n              </span>\n            </label>\n            <label>\n              <input type=\"checkbox\" id=\"blueLikesThreshold\" />\n              <span>\n                Only under popular posts\n                <small\n                  >Leaves blue checkmark replies unhidden on smaller posts,\n                  where they're more likely to be a real person. Doesn't\n                  override the \"Keep blue checkmark users replies inside their\n                  own threads\" option below: those stay either way.</small\n                >\n              </span>\n            </label>\n            <!-- Nested under \"Only under popular posts\": the chooser is that\n                 option's own. -->\n            <div class=\"sub-checks\">\n              <p class=\"rule-line\" style=\"margin: 0\">\n                Hide them under posts with at least\n                <select id=\"blueMinThreadLikes\"></select>\n                likes.\n              </p>\n            </div>\n            <label>\n              <input type=\"checkbox\" id=\"blueFollowedReplies\" />\n              <span>\n                Keep replies from accounts I follow\n                <small>Their own posts are still subject to the switch above.</small>\n              </span>\n            </label>\n            <label>\n              <input type=\"checkbox\" id=\"blueSelfReplies\" />\n              <span>\n                Keep blue checkmark users replies inside their own threads\n                <small\n                  >Covers replying to themselves, and replying to whoever\n                  answered a thread they started.</small\n                >\n              </span>\n            </label>\n          </div>\n\n          <label>\n            <input type=\"checkbox\" id=\"hideBusiness\" />\n            <span>\n              Hide gold checks\n              <small>Verified organisations and brands.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideGovernment\" />\n            <span>\n              Hide grey checks\n              <small>Government and multilateral accounts.</small>\n            </span>\n          </label>\n        </div>\n\n\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideUnverifiedReplies\" />\n            <span>\n              Hide replies from accounts with no checkmark\n              <small\n                >The inverse of the switches above: catches accounts with no\n                badge at all.</small\n              >\n            </span>\n          </label>\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"unverifiedFollowedReplies\" />\n              <span>Keep replies from accounts I follow</span>\n            </label>\n            <label>\n              <input type=\"checkbox\" id=\"unverifiedSelfReplies\" />\n              <span>\n                Keep their replies inside their own threads\n                <small\n                  >Covers replying to themselves, and replying to whoever\n                  answered a thread they started.</small\n                >\n              </span>\n            </label>\n          </div>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"verified-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"verified-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"verified-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"verified-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-media\">\n        <h2 id=\"h-media\">Videos</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"videoModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n\n\n        <hr class=\"section-rule\" />\n\n        <h3>Short clips</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideShortVideo\" />\n            <span>Hide posts whose video is short</span>\n          </label>\n        </div>\n\n        <div class=\"sub-checks\">\n          <p class=\"rule-line\" style=\"margin: 0\">\n            Short means\n            <select id=\"videoMaxSeconds\"></select>\n            seconds or less.\n          </p>\n          <label>\n            <input type=\"checkbox\" id=\"videoIncludeGifs\" />\n            <span>\n              Count GIFs too\n              <small\n                >X stores GIFs as silent looping video, so they're all short by\n                nature and would otherwise all be caught.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <h3>Vertical clips</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideVertical\" />\n            <span>\n              Hide vertical videos\n              <small\n                >Portrait clips are overwhelmingly reposts from TikTok and\n                Reels. It's the shape, not a watermark check - an original\n                phone video gets caught too.</small\n              >\n            </span>\n          </label>\n        </div>\n\n<h3>Playback</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"videoHorizontalVolume\" />\n            <span>\n              Horizontal volume slider\n              <small\n                >Beside the mute button, with the volume as a number, in place\n                of X's pop-up one. The time moves to the left of the controls\n                to make room.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"videoFullQuality\" />\n            <span>\n              Play videos at full quality from the start\n              <small\n                >X starts videos at low quality and switches up as it judges\n                your connection. This plays the best quality right away. On a\n                slow connection a video may pause to load rather than drop in\n                quality.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"clickPausesMuted\" />\n            <span>\n              <span class=\"experimental\">Experimental:</span> Video Player\n              Click-to-Mute Fixes\n              <small>\n                This option has two functions:\n                <ul>\n                  <li>\n                    X normally unmutes a muted video when you click it - this\n                    makes it pause instead like it does when the video is\n                    unmuted.\n                  </li>\n                  <li>\n                    When someone uses a video from another post, there's a\n                    small attribution box on the lower left of the video player\n                    linking to that post. This fixes the video player so\n                    clicking on the player to the right of this box actually\n                    pauses the video player instead of just doing nothing.\n                  </li>\n                </ul>\n                Both work by taking the click on the player, so they can't be\n                separated. Mostly works, but it's finnicky.\n              </small>\n            </span>\n          </label>\n        </div>\n\n\n        <p class=\"rule-line\">\n          Start videos at\n          <select id=\"videoVolume\"></select>\n          volume.\n        </p>\n\n        <p class=\"rule-line\">\n          Play videos at\n          <select id=\"videoSpeed\"></select>\n          speed.\n        </p>\n        <p class=\"note\">\n          A starting speed for every video. X's own speed option, in its\n          player's gear menu, still changes it for one video.\n        </p>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"video-allowed-count\">0</span></h3>\n          <p class=\"note\">\n            Shift-clicking a hidden post's bar adds the account here.\n          </p>\n          <ul class=\"list\" id=\"video-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"video-allow-input\"\n              placeholder=\"@handle\"\n              maxlength=\"16\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"video-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-bait\">\n        <h2 id=\"h-bait\">Engagement bait</h2>\n        <p class=\"rule-line\">\n          Hide at a score of\n          <select id=\"baitThreshold\"></select>\n          or higher, by\n          <select id=\"baitModeOverride\">\n            <option value=\"\">using the setting above</option>\n            <option value=\"collapse\">collapsing to a bar</option>\n            <option value=\"remove\">removing them entirely</option>\n          </select>.\n        </p>\n\n\n        <p class=\"note\">\n          This one guesses. It reads patterns in the wording and the reply-to-like\n          ratio, and it will sometimes be wrong. Leave hiding off, watch the scores\n          on your own timeline for a few days, then decide what to trust.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"baitHide\" />\n            <span>Hide posts that reach the threshold</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"baitEnabled\" />\n            <span>Score posts as I scroll</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"baitShowScores\" />\n            <span>\n              Show each post's score in the MED-X corner menu\n              <small\n                >Also lights up the button on scored posts; with this off it\n                stays faded.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"baitHighlight\" />\n            <span>\n              Highlight the text that matched\n              <small\n                >Marks the exact words or emoji a rule caught, so a bad rule is\n                obvious rather than mysterious. The reply-ratio and quote-length\n                rules are the exceptions - they're counts, with no particular\n                text to point at.</small\n              >\n            </span>\n          </label>\n          <div class=\"sub-checks\">\n            <label>\n              <input type=\"checkbox\" id=\"baitHighlightOnlyScored\" />\n              <span>\n                Only on posts that reach the threshold\n                <small\n                  >Otherwise a single weak match gets underlined on a post that\n                  stays visible.</small\n                >\n              </span>\n            </label>\n          </div>\n\n        </div>\n\n        <hr class=\"section-rule\" />\n        <hr class=\"section-rule\" />\n\n        <div class=\"bait-rules\" id=\"bait-rules\"></div>\n\n        <div class=\"allow-block\">\n          <h3>Your own phrases <span class=\"count\" id=\"custom-count\">0</span></h3>\n          <p class=\"note\">\n            Plain text, not patterns - matched anywhere in a post unless you tick\n            whole word. Case is ignored. Each adds its weight to the score like\n            any other rule, and the matching text gets highlighted.\n          </p>\n          <div class=\"bait-rules\" id=\"custom-rules\"></div>\n          <div class=\"field-row custom\">\n            <input\n              type=\"text\"\n              id=\"custom-phrase-input\"\n              placeholder=\"Phrase to catch, e.g. engagement farming\"\n              maxlength=\"100\"\n              autocomplete=\"off\"\n            />\n            <button type=\"button\" class=\"ghost\" id=\"custom-phrase-add\">Add</button>\n          </div>\n\n        </div>\n      </section>\n\n      <section class=\"pane\" aria-labelledby=\"h-source\">\n        <h2 id=\"h-source\">Posting app</h2>\n        <p class=\"rule-line\">\n          Hide these by\n          <select id=\"sourceModeOverride\">\n            <option value=\"\">using my default</option>\n            <option value=\"collapse\">collapsing the post to a bar</option>\n            <option value=\"remove\">removing the post entirely</option>\n          </select>\n        </p>\n        <p class=\"note\">\n          X stopped showing which app a post came from, but still sends it.\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"sourceThirdParty\" />\n            <span>\n              Hide posts from third-party tools\n              <small\n                >Scheduling and marketing software - Circleboom, Emplifi and\n                the like. Often used by corporations/brands to shovel posts out\n                there.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"sourceIphone\" />\n            <span>Hide posts from iPhone</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"sourceAndroid\" />\n            <span>Hide posts from Android</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"sourceWeb\" />\n            <span>Hide posts from the web app</span>\n          </label>\n        </div>\n\n        <div class=\"allow-block\">\n          <h3>Never hide these accounts <span class=\"count\" id=\"source-allowed-count\">0</span></h3>\n          <ul class=\"list\" id=\"source-allowed-list\"></ul>\n          <div class=\"field-row custom\">\n            <input type=\"text\" id=\"source-allow-input\" placeholder=\"@handle\" maxlength=\"16\" autocomplete=\"off\" />\n            <button type=\"button\" class=\"ghost\" id=\"source-allow-add\">Add</button>\n          </div>\n        </div>\n      </section>\n\n      <section class=\"pane wide\" aria-labelledby=\"h-clutter\">\n        <h2 id=\"h-clutter\">Interface</h2>\n        <p class=\"note\">\n          Part of X's own interface rather than posts, so none of the other\n          filter settings apply to this section.\n        </p>\n\n        <h3 id=\"h-sidebar-logo\">Sidebar logo</h3>\n        <p class=\"rule-line\">\n          Show\n          <select id=\"logo\">\n            <option value=\"\">X's own</option>\n            <option value=\"wordmark\">Twitter Wordmark</option>\n            <option value=\"bird\">Bird</option>\n            <option value=\"medx\">MED-X</option>\n          </select>\n          in\n          <input type=\"color\" id=\"logoColour\" class=\"colour-picker\" />\n        </p>\n\n        <h3>Post text</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"fontEverywhere\" />\n            <span>\n              Apply to the whole interface\n              <small\n                >Not only posts. The color still only applies to post text \u2014\n                recoloring every label flattens the rest of the page.</small\n              >\n            </span>\n          </label>\n        </div>\n        <p class=\"rule-line\">\n          Font\n          <select id=\"fontFamily\">\n            <option value=\"\">X's own</option>\n            <optgroup label=\"Sans serif\">\n              <option value=\"system-ui, -apple-system, 'Segoe UI', sans-serif\">\n                System\n              </option>\n              <option value=\"Helvetica, 'Helvetica Neue', Arial, sans-serif\">\n                Helvetica\n              </option>\n              <option value=\"Verdana, Geneva, sans-serif\">Verdana</option>\n              <option value=\"Tahoma, Geneva, sans-serif\">Tahoma</option>\n              <option value=\"'Trebuchet MS', 'Lucida Grande', sans-serif\">\n                Trebuchet\n              </option>\n              <option value=\"'Avenir Next', Avenir, 'Segoe UI', sans-serif\">\n                Avenir\n              </option>\n              <option value=\"Optima, Candara, 'Segoe UI', sans-serif\">Optima</option>\n              <option value=\"'Futura', 'Century Gothic', 'URW Gothic', sans-serif\">\n                Futura\n              </option>\n            </optgroup>\n            <optgroup label=\"Serif\">\n              <option value=\"Georgia, 'Times New Roman', serif\">Georgia</option>\n              <option value=\"'Iowan Old Style', Palatino, Georgia, serif\">\n                Iowan Old Style\n              </option>\n              <option value=\"Palatino, 'Palatino Linotype', 'Book Antiqua', serif\">\n                Palatino\n              </option>\n              <option value=\"'Times New Roman', Times, serif\">Times</option>\n              <option value=\"Charter, 'Bitstream Charter', Cambria, serif\">\n                Charter\n              </option>\n              <option value=\"Baskerville, 'Libre Baskerville', Georgia, serif\">\n                Baskerville\n              </option>\n              <option value=\"Didot, 'Playfair Display', Georgia, serif\">Didot</option>\n            </optgroup>\n            <optgroup label=\"Monospace\">\n              <option value=\"'SF Mono', Consolas, 'Liberation Mono', monospace\">\n                System mono\n              </option>\n              <option value=\"'Courier New', Courier, monospace\">Courier</option>\n              <option value=\"Menlo, 'DejaVu Sans Mono', Consolas, monospace\">\n                Menlo\n              </option>\n              <option value=\"'Andale Mono', 'Lucida Console', monospace\">\n                Andale Mono\n              </option>\n            </optgroup>\n            <optgroup label=\"Character\">\n              <option value=\"'Comic Sans MS', 'Comic Sans', cursive\">\n                Comic Sans\n              </option>\n              <option value=\"'Brush Script MT', 'Segoe Script', cursive\">\n                Brush Script\n              </option>\n              <option value=\"'Bradley Hand', 'Segoe Print', cursive\">\n                Bradley Hand\n              </option>\n            </optgroup>\n          </select>\n        </p>\n\n        <p class=\"rule-line\">\n          Weight\n          <select id=\"fontWeight\">\n            <option value=\"\">X's own</option>\n            <option value=\"300\">Light</option>\n            <option value=\"400\">Normal</option>\n            <option value=\"500\">Medium</option>\n            <option value=\"600\">Semibold</option>\n            <option value=\"700\">Bold</option>\n          </select>\n        </p>\n\n        <p class=\"rule-line\">\n          <label class=\"inline-check\" for=\"fontColour\">Color</label>\n          <input type=\"color\" id=\"fontColour\" class=\"colour-picker\" />\n          <button type=\"button\" class=\"ghost\" id=\"fontColourReset\">\n            Use X's own\n          </button>\n        </p>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"fontColourUsernames\" />\n            <span>\n              Color names and handles too\n              <small>Uses the post text color unless you pick another.</small>\n            </span>\n          </label>\n        </div>\n\n        <div class=\"sub-checks\">\n          <p class=\"rule-line\" style=\"margin: 0\">\n            <label class=\"inline-check\" for=\"fontUsernameColour\">\n              Name color\n            </label>\n            <input type=\"color\" id=\"fontUsernameColour\" class=\"colour-picker\" />\n            <button type=\"button\" class=\"ghost\" id=\"fontUsernameColourReset\">\n              Match post text\n            </button>\n          </p>\n        </div>\n\n        <p class=\"rule-line\">\n          Name outline\n          <select id=\"fontUsernameStroke\">\n            <option value=\"0\">none</option>\n            <option value=\"0.5\">hairline</option>\n            <option value=\"1\">thin</option>\n            <option value=\"2\">medium</option>\n            <option value=\"3\">thick</option>\n            <option value=\"4\">heavy</option>\n            <option value=\"6\">very heavy</option>\n          </select>\n          <input type=\"color\" id=\"fontUsernameStrokeColour\" class=\"colour-picker\" />\n        </p>\n\n        <p class=\"rule-line\">\n          Name glow\n          <select id=\"fontUsernameGlow\">\n            <option value=\"0\">none</option>\n            <option value=\"1\">faint</option>\n            <option value=\"2\">soft</option>\n            <option value=\"3\">strong</option>\n            <option value=\"4\">neon</option>\n          </select>\n          <input type=\"color\" id=\"fontUsernameGlowColour\" class=\"colour-picker\" />\n        </p>\n\n        <p class=\"rule-line\">\n          Name weight\n          <select id=\"fontUsernameWeight\">\n            <option value=\"\">Same as post text</option>\n            <option value=\"300\">Light</option>\n            <option value=\"400\">Normal</option>\n            <option value=\"500\">Medium</option>\n            <option value=\"600\">Semibold</option>\n            <option value=\"700\">Bold</option>\n            <option value=\"800\">Extra bold</option>\n          </select>\n        </p>\n\n\n        <h3>Background</h3>\n        <p class=\"note\">Applies to the background of the entire website.</p>\n        <p class=\"rule-line\">\n          <label class=\"inline-check\" for=\"timelineBackground\">\n            Background color\n          </label>\n          <input type=\"color\" id=\"timelineBackground\" class=\"colour-picker\" />\n          <button type=\"button\" class=\"ghost\" id=\"timelineBackgroundReset\">\n            Use X's own\n          </button>\n        </p>\n\n        <div class=\"sub-checks\">\n          <label>\n            <input type=\"checkbox\" id=\"timelineGradient\" />\n            <span>\n              Fade to a second color\n              <small\n                >A gradient behind the whole page rather than a flat\n                color.</small\n              >\n            </span>\n          </label>\n          <p class=\"rule-line\" style=\"margin: 8px 0 0\">\n            Fading to\n            <input type=\"color\" id=\"timelineBackgroundTo\" class=\"colour-picker\" />\n            at\n            <select id=\"timelineGradientAngle\">\n              <option value=\"180\">top to bottom</option>\n              <option value=\"0\">bottom to top</option>\n              <option value=\"90\">left to right</option>\n              <option value=\"135\">diagonally</option>\n            </select>\n          </p>\n        </div>\n\n        <h3 id=\"h-picture\">Picture</h3>\n        <p class=\"note\">\n          Covers the background color above. A PNG with transparency is the\n          exception - the color shows through wherever the picture is clear.\n        </p>\n        <p class=\"note\">\n          Can also be animated: an MP4 or WebM video, or an animated WebP, PNG\n          or GIF, up to 5MB. Video is the best choice for anything longer than\n          a few seconds - it's far smaller and lighter to play. Motion pauses\n          while the tab is hidden, and stays still if your system is set to\n          reduce motion.\n        </p>\n\n        <p class=\"rule-line\">\n          <label class=\"inline-check\" for=\"backgroundImageFile\">Picture 1</label>\n          <input\n            type=\"file\"\n            id=\"backgroundImageFile\"\n            accept=\"image/*,video/mp4,video/webm\"\n          />\n          <button type=\"button\" class=\"ghost\" id=\"backgroundImageClear\">\n            Remove\n          </button>\n          <span class=\"search-status\" id=\"backgroundImageStatus\"></span>\n        </p>\n\n        <p class=\"rule-line\">\n          <label class=\"inline-check\" for=\"backgroundImageFile2\">Picture 2</label>\n          <input type=\"file\" id=\"backgroundImageFile2\" accept=\"image/*\" />\n          <button type=\"button\" class=\"ghost\" id=\"backgroundImageClear2\">\n            Remove\n          </button>\n          <span class=\"search-status\" id=\"backgroundImageStatus2\"></span>\n        </p>\n        <hr class=\"section-bar\" />\n        <h4 class=\"picture-label\" id=\"h-picture-1\">Picture 1<span class=\"picture-thumb\" id=\"backgroundThumb1\" hidden></span></h4>\n        <p class=\"rule-line\">\n          Fit it by\n          <select id=\"backgroundFit\">\n            <option value=\"cover\">filling the window</option>\n            <option value=\"contain\">fitting it all in</option>\n            <option value=\"tile\">tiling it</option>\n          </select>\n          anchored\n          <select id=\"backgroundPosition\">\n            <option value=\"center\">in the middle</option>\n            <option value=\"left\">to the left</option>\n            <option value=\"right\">to the right</option>\n            <option value=\"20%\">left of center</option>\n            <option value=\"80%\">right of center</option>\n            <option value=\"center top\">to the top</option>\n            <option value=\"center bottom\">to the bottom</option>\n            <option value=\"left top\">to the top left</option>\n            <option value=\"right top\">to the top right</option>\n            <option value=\"left bottom\">to the bottom left</option>\n            <option value=\"right bottom\">to the bottom right</option>\n          </select>\n          and dim it\n          <select id=\"backgroundDim\">\n            <option value=\"0\">not at all</option>\n            <option value=\"20\">a little</option>\n            <option value=\"40\">a fair bit</option>\n            <option value=\"60\">a lot</option>\n            <option value=\"80\">almost out</option>\n          </select>\n        </p>\n\n        <p class=\"rule-line\">\n          Size\n          <input\n            type=\"range\"\n            id=\"backgroundScale\"\n            min=\"1\"\n            max=\"200\"\n            step=\"1\"\n            class=\"slider\"\n          />\n          <input\n            type=\"number\"\n            id=\"backgroundScaleNumber\"\n            min=\"1\"\n            max=\"200\"\n            step=\"any\"\n            class=\"number-input\"\n            aria-label=\"Background size, in percent\"\n          />%\n          <span class=\"search-status\" id=\"backgroundScaleValue\"></span>\n          <button type=\"button\" class=\"ghost\" id=\"backgroundScaleReset\">\n            Back to 100%\n          </button>\n        </p>\n        <p class=\"rule-line\">\n          Move it\n          <input type=\"range\" id=\"backgroundOffsetX\" min=\"-1500\" max=\"1500\" step=\"1\" class=\"slider\" />\n          <input\n            type=\"number\"\n            id=\"backgroundOffsetXNumber\"\n            min=\"-1500\"\n            max=\"1500\"\n            step=\"1\"\n            class=\"number-input\"\n            aria-label=\"Picture 1, pixels across\"\n          />px across,\n          <input type=\"range\" id=\"backgroundOffsetY\" min=\"-1500\" max=\"1500\" step=\"1\" class=\"slider\" />\n          <input\n            type=\"number\"\n            id=\"backgroundOffsetYNumber\"\n            min=\"-1500\"\n            max=\"1500\"\n            step=\"1\"\n            class=\"number-input\"\n            aria-label=\"Picture 1, pixels down\"\n          />px down\n          <button type=\"button\" class=\"ghost\" id=\"backgroundOffsetReset\">Back to its anchor</button>\n          <small class=\"mirror-note\">Moves it from where it's anchored; negative moves it left or up.</small>\n        </p>\n        <p class=\"rule-line\">\n          Mirror it\n          <label class=\"inline-check\"\n            ><input type=\"checkbox\" id=\"backgroundMirrorX\" /> left to right</label\n          >\n          <label class=\"inline-check\"\n            ><input type=\"checkbox\" id=\"backgroundMirrorY\" /> top to bottom</label\n          >\n          <small class=\"mirror-note\"\n            >Animated GIF, PNG and WebP pictures can't be mirrored and show as\n            they are.</small\n          >\n        </p>\n\n        <hr class=\"section-bar\" />\n        <h4 class=\"picture-label\" id=\"h-picture-2\">Picture 2<span class=\"picture-thumb\" id=\"backgroundThumb2\" hidden></span></h4>\n        <p class=\"rule-line\" id=\"backgroundPair2Row\">\n          Fit it by\n          <select id=\"backgroundFit2\">\n            <option value=\"cover\">filling the window</option>\n            <option value=\"contain\">fitting it all in</option>\n            <option value=\"tile\">tiling it</option>\n          </select>\n          anchored\n          <select id=\"backgroundPosition2\">\n            <option value=\"center\">in the middle</option>\n            <option value=\"left\">to the left</option>\n            <option value=\"right\">to the right</option>\n            <option value=\"20%\">left of center</option>\n            <option value=\"80%\">right of center</option>\n            <option value=\"center top\">to the top</option>\n            <option value=\"center bottom\">to the bottom</option>\n            <option value=\"left top\">to the top left</option>\n            <option value=\"right top\">to the top right</option>\n            <option value=\"left bottom\">to the bottom left</option>\n            <option value=\"right bottom\">to the bottom right</option>\n          </select>\n          and dim it\n          <select id=\"backgroundDim2\">\n            <option value=\"0\">not at all</option>\n            <option value=\"20\">a little</option>\n            <option value=\"40\">a fair bit</option>\n            <option value=\"60\">a lot</option>\n            <option value=\"80\">almost out</option>\n          </select>\n        </p>\n\n        <p class=\"rule-line\">\n          Size\n          <input\n            type=\"range\"\n            id=\"backgroundScale2\"\n            min=\"1\"\n            max=\"200\"\n            step=\"1\"\n            class=\"slider\"\n          />\n          <input\n            type=\"number\"\n            id=\"backgroundScaleNumber2\"\n            min=\"1\"\n            max=\"200\"\n            step=\"any\"\n            class=\"number-input\"\n            aria-label=\"Picture 2 size, in percent\"\n          />%\n          <span class=\"search-status\" id=\"backgroundScaleValue2\"></span>\n          <button type=\"button\" class=\"ghost\" id=\"backgroundScaleReset2\">\n            Back to 100%\n          </button>\n        </p>\n        <p class=\"rule-line\">\n          Move it\n          <input type=\"range\" id=\"backgroundOffsetX2\" min=\"-1500\" max=\"1500\" step=\"1\" class=\"slider\" />\n          <input\n            type=\"number\"\n            id=\"backgroundOffsetXNumber2\"\n            min=\"-1500\"\n            max=\"1500\"\n            step=\"1\"\n            class=\"number-input\"\n            aria-label=\"Picture 2, pixels across\"\n          />px across,\n          <input type=\"range\" id=\"backgroundOffsetY2\" min=\"-1500\" max=\"1500\" step=\"1\" class=\"slider\" />\n          <input\n            type=\"number\"\n            id=\"backgroundOffsetYNumber2\"\n            min=\"-1500\"\n            max=\"1500\"\n            step=\"1\"\n            class=\"number-input\"\n            aria-label=\"Picture 2, pixels down\"\n          />px down\n          <button type=\"button\" class=\"ghost\" id=\"backgroundOffsetReset2\">Back to its anchor</button>\n          <small class=\"mirror-note\">Moves it from where it's anchored; negative moves it left or up.</small>\n        </p>\n        <p class=\"rule-line\">\n          Mirror it\n          <label class=\"inline-check\"\n            ><input type=\"checkbox\" id=\"backgroundMirrorX2\" /> left to right</label\n          >\n          <label class=\"inline-check\"\n            ><input type=\"checkbox\" id=\"backgroundMirrorY2\" /> top to bottom</label\n          >\n        </p>\n        <p class=\"note\" id=\"backgroundPairNote\">\n          Picture 2 has its own settings and doesn't affect picture 1. Anchor\n          one left and one right to frame the timeline. Not available when\n          picture 1 is a video.\n        </p>\n\n\n        <h3>Post backdrop</h3>\n        <p class=\"note\">\n          A band behind the posts, so they stay readable over a busy\n          background. Dimming the background instead would dim the picture with\n          it.\n        </p>\n        <p class=\"rule-line\">\n          Shade the posts\n          <select id=\"postVeil\">\n            <option value=\"0\">not at all</option>\n            <option value=\"20\">a little</option>\n            <option value=\"40\">a fair bit</option>\n            <option value=\"60\">a lot</option>\n            <option value=\"80\">almost solid</option>\n            <option value=\"95\">solid</option>\n          </select>\n          in\n          <input type=\"color\" id=\"postVeilColour\" class=\"colour-picker\" />\n        </p>\n\n        <h3>Left sidebar</h3>\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"navExplore\" />\n            <span>Hide Explore</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navFollow\" />\n            <span>Hide Follow</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navGrok\" />\n            <span>Hide Grok</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navCreator\" />\n            <span>Hide Creator Studio</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navPremium\" />\n            <span>Hide Premium</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"navMoney\" />\n            <span>\n              Hide Money\n              <small>X adds it once X Money has been opened.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"sidebarButton\" />\n            <span>\n              Show a MED-X button in the sidebar\n              <small\n                >Opens these settings over the page, without leaving X.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <h3>Layout</h3>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"flipLayout\" />\n            <span>\n              Flip the layout\n              <small\n                >Puts X's menu on the right of the screen and the search column\n                on the left.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"centerTimeline\" />\n            <span>\n              Center the timeline\n              <small\n                >X centers its layout as a whole, which leaves the timeline a\n                little left of center. This moves the menu, timeline and search\n                column over together; when there isn't room, the search column\n                narrows to fit.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"menuLeft\" />\n            <span>\n              Anchor the menu to its edge\n              <small\n                >Moves X's menu to the window's edge on its side \u2014 the left, or\n                the right with the layout flipped \u2014 rather than beside the\n                timeline. The collapse chevron moves with it.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <h3>Right sidebar</h3>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideWhatsHappening\" />\n            <span>\n              Hide the \"What's happening\" panel\n              <small\n                >Hiding a sidebar panel takes its frame and divider with\n                it.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideTodaysNews\" />\n            <span>\n              Hide \"Today's News\"\n              <small>X's panel of summarised headlines in the sidebar.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideWhoToFollow\" />\n            <span>Hide the \"Who to follow\" panel</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideRelevantPeople\" />\n            <span>\n              Hide \"Relevant people\"\n              <small>The suggested accounts beside a thread.</small>\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hidePremium\" />\n            <span>Hide the \"Subscribe to Premium\" panel</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"footerToCorner\" />\n            <span>\n              Move the Terms and Privacy links to the corner\n              <small\n                >Out of the sidebar and into the bottom corner on the search\n                column's side, clear of the Grok and chat buttons if you've kept\n                them.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideFooter\" />\n            <span>\n              Hide the Terms and Privacy links\n              <small\n                >Takes them off the page altogether. Overrides moving them to\n                the corner.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <h3>Post timeline</h3>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"mediaZoom\" />\n            <span>\n              Alt + scroll to zoom pictures and videos\n              <small\n                >In fullscreen and in X's media viewer. Alt + drag to move\n                around while zoomed, double-click to reset.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"photoGrid\" />\n            <span>\n              Show multiple images as a grid\n              <small\n                >X shows them as a swipeable carousel now; this lays them out\n                so you can see them all at once. Close to the old layout rather\n                than a replica.</small\n              >\n            </span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideGrokOnPosts\" />\n            <span>Hide the Grok \"Explain this post\" button on posts</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideNewPostsBar\" />\n            <span>\n              Hide the \"Show N posts\" bar at the top of the timeline\n              <small\n                >The new posts stay unloaded until you scroll to the top or\n                reload, so your place in the feed doesn't move.</small\n              >\n            </span>\n          </label>\n        </div>\n\n        <h3>Corner buttons</h3>\n\n        <div class=\"checks\">\n          <label>\n            <input type=\"checkbox\" id=\"hideGrok\" />\n            <span>Hide the Grok button</span>\n          </label>\n          <label>\n            <input type=\"checkbox\" id=\"hideChatDock\" />\n            <span>\n              Hide the chat button\n              <small>Messages stay reachable from the left sidebar.</small>\n            </span>\n          </label>\n        </div>\n      </section>\n\n      </div>\n\n      <footer class=\"footer\">\n        <span class=\"storage\" id=\"storage-report\"></span>\n        <span class=\"saved\" id=\"saved\" hidden>Saved</span>\n      </footer>\n    </main>\n\n    \n    \n    <!-- bait.js calls MEDX.phrases; loading it without this works only for as\n         long as the options page never calls score(). -->\n    \n    \n    \n    \n    \n  ";
+const PANEL_CSS = "\n@font-face {\n  font-family: \"Twemoji Country Flags\";\n  src: url(\"data:font/woff2;base64,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\") format(\"woff2\");\n  font-display: swap;\n  unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0020-E007F;\n}\n\n.flag-emoji {\n  font-family: \"Twemoji Country Flags\", \"Segoe UI Emoji\", \"Apple Color Emoji\",\n    \"Noto Color Emoji\", sans-serif;\n  font-size: 15px;\n  line-height: 1;\n}\n\n:host {\n  --paper: #eceff1;\n  --surface: #ffffff;\n  --ink: #14202a;\n  --muted: #5b6b78;\n  --line: #d7dee4;\n  --accent: #1d4e89;\n  --accent-soft: #e3ecf6;\n  --signal: #8a5000;\n  --radius: 8px;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --paper: #10161b;\n    --surface: #182028;\n    --ink: #e6edf3;\n    --muted: #93a3b0;\n    --line: #2a343d;\n    --accent: #7fa9dc;\n    --accent-soft: #1b2635;\n    --signal: #d8a14a;\n  }\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.medx-panel-root {\n  margin: 0;\n  background: var(--paper);\n  color: var(--ink);\n  font: 400 14px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif;\n  font-feature-settings: \"tnum\" 1;\n}\n\n.page {\n  max-width: 1560px;\n  margin: 0 auto;\n  \n  padding: 16px 24px 64px;\n}\n\n\n\n.columns {\n  columns: auto;\n}\n\n.columns > .pane {\n  margin: 0 0 20px;\n  width: 100%;\n}\n\n.searchbar {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  margin: 20px 0;\n}\n\n.searchbar input {\n  flex: 1;\n  padding: 10px 14px;\n  font: inherit;\n  font-size: 14px;\n  color: var(--ink);\n  background: var(--surface);\n  border: 1px solid var(--line);\n  border-radius: var(--radius);\n}\n\n.searchbar input:focus {\n  outline: none;\n  border-color: var(--accent);\n}\n\n.search-status {\n  color: var(--muted);\n  font-size: 12px;\n  white-space: nowrap;\n}\n\n.pane[hidden] {\n  display: none;\n}\n\n.masthead {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 32px;\n}\n\n\n.logo {\n  width: 128px;\n  height: 128px;\n  flex: none;\n  margin-right: -8px;\n}\n\n.masthead > div {\n  flex: 1;\n  padding-bottom: 20px;\n  border-bottom: 2px solid var(--ink);\n  margin-bottom: 28px;\n}\n\nh1 {\n  margin: 0 0 6px;\n  font-size: 25px;\n  font-weight: 600;\n  letter-spacing: -0.015em;\n}\n\n.tagline {\n  margin: 0 0 8px;\n  color: var(--accent);\n  font-size: 13px;\n}\n\n.lede {\n  margin: 0;\n  max-width: 54ch;\n  color: var(--muted);\n}\n\nh2 {\n  margin: 0 0 4px;\n  font-size: 16px;\n  font-weight: 600;\n}\n\n\nh3 {\n  margin: 26px 0 10px;\n  font-size: 16px;\n  font-weight: 650;\n  color: var(--ink);\n}\n\n\n.pane > h3:first-of-type,\n.allow-block > h3:first-child {\n  margin-top: 0;\n}\n\n.count {\n  color: var(--muted);\n  font-weight: 400;\n}\n\n.note {\n  margin: 0 0 16px;\n  max-width: 56ch;\n  color: var(--muted);\n  font-size: 13px;\n}\n\n.pane {\n  background: var(--surface);\n  border: 1px solid var(--line);\n  border-radius: var(--radius);\n  padding: 22px;\n}\n\n.wide {\n  margin-top: 0;\n}\n\n\n\n.pane.behaviour {\n  margin: 0 0 20px;\n}\n\n\n\n.behaviour-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);\n  gap: 28px;\n  align-items: center;\n}\n\n@media (max-width: 760px) {\n  .behaviour-grid {\n    grid-template-columns: 1fr;\n    gap: 16px;\n  }\n}\n\n.behaviour \n.choice {\n  margin-bottom: 18px;\n  padding: 14px 16px;\n  background: var(--surface);\n  border: 1px solid var(--line);\n  border-radius: var(--radius);\n}\n\n.behaviour .preview {\n  margin-bottom: 0;\n}\n\n\n.master {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  cursor: pointer;\n  white-space: nowrap;\n  padding-top: 4px;\n}\n\n.master input {\n  position: absolute;\n  opacity: 0;\n  width: 0;\n  height: 0;\n}\n\n.switch {\n  width: 38px;\n  height: 22px;\n  border-radius: 999px;\n  background: var(--line);\n  position: relative;\n  transition: background 0.15s ease;\n}\n\n.switch::after {\n  content: \"\";\n  position: absolute;\n  top: 3px;\n  left: 3px;\n  width: 16px;\n  height: 16px;\n  border-radius: 50%;\n  background: var(--surface);\n  transition: transform 0.15s ease;\n}\n\n.master input:checked + .switch {\n  background: var(--accent);\n}\n\n.master input:checked + .switch::after {\n  transform: translateX(16px);\n}\n\n.master input:focus-visible + .switch {\n  outline: 2px solid var(--accent);\n  outline-offset: 2px;\n}\n\n.master-text {\n  font-size: 13px;\n  color: var(--muted);\n}\n\n\n.chips {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 6px;\n  margin-bottom: 14px;\n}\n\n.chips:empty {\n  display: none;\n}\n\n.chip {\n  display: inline-flex;\n  align-items: center;\n  gap: 7px;\n  background: var(--accent-soft);\n  color: var(--accent);\n  border: none;\n  border-radius: 999px;\n  padding: 4px 8px 4px 11px;\n  font: inherit;\n  font-size: 13px;\n  cursor: pointer;\n}\n\n.chip span {\n  font-size: 15px;\n  line-height: 1;\n  opacity: 0.7;\n}\n\n.chip:hover span {\n  opacity: 1;\n}\n\n\ninput[type=\"search\"],\ninput[type=\"text\"],\nselect {\n  font: inherit;\n  color: var(--ink);\n  background: var(--surface);\n  border: 1px solid var(--line);\n  border-radius: 6px;\n  padding: 7px 10px;\n}\n\ninput[type=\"search\"] {\n  width: 100%;\n}\n\nselect {\n  padding: 4px 6px;\n}\n\ninput:focus-visible,\nselect:focus-visible,\nbutton:focus-visible {\n  outline: 2px solid var(--accent);\n  outline-offset: 1px;\n}\n\n.field-row {\n  display: flex;\n  gap: 8px;\n  margin-bottom: 14px;\n}\n\n.custom {\n  margin: 14px 0 0;\n}\n\n.custom input {\n  flex: 1;\n}\n\nbutton.ghost {\n  font: inherit;\n  color: var(--ink);\n  background: transparent;\n  border: 1px solid var(--line);\n  border-radius: 6px;\n  padding: 7px 14px;\n  cursor: pointer;\n}\n\nbutton.ghost:hover:not(:disabled) {\n  border-color: var(--muted);\n}\n\n\nbutton.ghost:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n\nbutton.danger:hover {\n  color: var(--signal);\n  border-color: var(--signal);\n}\n\n\n.lang-grid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));\n  gap: 2px 12px;\n  max-height: 320px;\n  overflow-y: auto;\n  padding-right: 4px;\n}\n\n.lang-grid label {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 4px 2px;\n  border-radius: 4px;\n  cursor: pointer;\n}\n\n.lang-grid label:hover {\n  background: var(--accent-soft);\n}\n\n.lang-grid .code {\n  margin-left: auto;\n  color: var(--muted);\n  font-size: 12px;\n}\n\n\n.choice,\n.checks {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  margin-bottom: 18px;\n}\n\n.choice label,\n.checks label {\n  display: flex;\n  align-items: flex-start;\n  gap: 9px;\n  cursor: pointer;\n}\n\n.checks small {\n  display: block;\n  color: var(--muted);\n  font-size: 12px;\n  margin-top: 2px;\n}\n\ninput[type=\"checkbox\"],\ninput[type=\"radio\"] {\n  margin: 2px 0 0;\n  accent-color: var(--accent);\n  flex: 0 0 auto;\n}\n\n\n.preview {\n  margin: 0 0 20px;\n}\n\n.preview-bar {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  padding: 9px 12px;\n  border: 1px solid var(--line);\n  border-radius: 6px;\n  background: var(--paper);\n  color: var(--muted);\n  font-size: 13px;\n  transition: opacity 0.18s ease, transform 0.18s ease;\n}\n\n.preview.is-removed .preview-bar {\n  opacity: 0;\n  transform: scaleY(0.4);\n}\n\n.preview-rule {\n  width: 3px;\n  align-self: stretch;\n  min-height: 16px;\n  border-radius: 2px;\n  background: currentColor;\n  opacity: 0.4;\n}\n\n.preview-actions {\n  margin-left: auto;\n}\n\n.preview-actions em {\n  font-style: normal;\n  border: 1px solid var(--line);\n  border-radius: 999px;\n  padding: 2px 10px;\n}\n\n.preview-caption {\n  margin: 8px 0 0;\n  font-size: 12px;\n  color: var(--muted);\n}\n\n\n.rule-line {\n  margin: 0 0 20px;\n  color: var(--ink);\n}\n\n.lists {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  gap: 24px;\n}\n\n@media (max-width: 760px) {\n  .lists {\n    grid-template-columns: 1fr;\n  }\n}\n\n.list {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  max-height: 240px;\n  overflow-y: auto;\n}\n\n.list li {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  padding: 6px 0;\n  border-bottom: 1px solid var(--line);\n}\n\n.list .handle {\n  font-weight: 500;\n}\n\na.handle {\n  color: var(--ink);\n  text-decoration: none;\n  border-bottom: 1px solid var(--line);\n}\n\na.handle:hover {\n  color: var(--accent);\n  border-bottom-color: var(--accent);\n}\n\n.list .why {\n  color: var(--muted);\n  font-size: 12px;\n}\n\n.list button {\n  margin-left: auto;\n  font: inherit;\n  font-size: 12px;\n  color: var(--accent);\n  background: none;\n  border: none;\n  padding: 2px 4px;\n  cursor: pointer;\n  text-decoration: underline;\n}\n\n.empty {\n  color: var(--muted);\n  font-size: 13px;\n  padding: 6px 0;\n}\n\n\n.footer {\n  display: flex;\n  align-items: center;\n  gap: 14px;\n  margin-top: 24px;\n}\n\n.saved {\n  color: var(--accent);\n  font-size: 13px;\n}\n\n@media (prefers-reduced-motion: reduce) {\n  * {\n    transition: none !important;\n  }\n}\n\n\n.bait-rules {\n  display: grid;\n  gap: 2px;\n}\n\n.bait-rule {\n  display: grid;\n  grid-template-columns: auto 1fr auto;\n  align-items: baseline;\n  gap: 10px;\n  padding: 8px 4px;\n  border-bottom: 1px solid var(--line);\n}\n\n.bait-rule:last-child {\n  border-bottom: none;\n}\n\n.bait-rule .hint {\n  display: block;\n  color: var(--muted);\n  font-size: 12px;\n  margin-top: 2px;\n}\n\n.bait-rule.off > * {\n  opacity: 0.55;\n}\n\n.bait-rule .weight {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  color: var(--muted);\n  font-size: 12px;\n}\n\n.lang-grid.disabled {\n  opacity: 0.45;\n}\n\n.lang-grid.disabled label {\n  cursor: default;\n}\n\n.lang-grid.disabled label:hover {\n  background: none;\n}\n\n.choice.disabled {\n  opacity: 0.45;\n}\n\n.choice.disabled label {\n  cursor: default;\n}\n\n.allow-block {\n  margin: 22px 0;\n  padding-top: 18px;\n  border-top: 1px solid var(--line);\n  max-width: 46ch;\n}\n\n\n.bait-rule .hint + .weight {\n  margin-top: 4px;\n}\n\n.bait-rule label > .weight {\n  display: flex;\n}\n\n.inline-check {\n  display: inline-flex;\n  align-items: center;\n  gap: 5px;\n  margin-right: 12px;\n  cursor: pointer;\n}\n\n.link-button {\n  font: inherit;\n  font-size: 12px;\n  color: var(--accent);\n  background: none;\n  border: none;\n  padding: 0;\n  cursor: pointer;\n  text-decoration: underline;\n}\n\n.colour-picker {\n  width: 30px;\n  height: 24px;\n  padding: 0;\n  border: 1px solid var(--line);\n  border-radius: 5px;\n  background: none;\n  cursor: pointer;\n}\n\n.colour-picker::-webkit-color-swatch-wrapper {\n  padding: 2px;\n}\n\n.colour-picker::-webkit-color-swatch {\n  border: none;\n  border-radius: 3px;\n}\n\n\n.sub-checks {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  margin: -2px 0 4px 26px;\n  padding-left: 12px;\n  border-left: 1px solid var(--line);\n}\n\n.saved.error {\n  color: var(--signal);\n  font-weight: 500;\n}\n\n.storage {\n  color: var(--muted);\n  font-size: 12px;\n  margin-right: auto;\n}\n\n.storage.near {\n  color: var(--signal);\n}\n\n.storage.over {\n  color: var(--signal);\n  font-weight: 600;\n}\n\n\n.section-rule {\n  border: 0;\n  border-top: 1px solid var(--line);\n  margin: 0 0 20px;\n}\n\n\n.field-row + .section-rule {\n  margin-top: 34px;\n}\n\n\n.field-row + .note {\n  margin-top: 16px;\n}\n\n\n.checks label small,\n.sub-checks label small,\n.rule-line .hint {\n  display: block;\n  margin-top: 4px;\n  color: var(--muted);\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.rule-line .hint {\n  margin-top: 6px;\n}\n\n.experimental {\n  color: #d93025;\n  font-weight: 700;\n}\n\n@media (prefers-color-scheme: dark) {\n  .experimental {\n    color: #ff6b5e;\n  }\n}\n\n\n.wide-list {\n  max-height: none;\n  overflow: visible;\n}\n\n\n\n.wide-list:has(li:nth-child(8)) {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));\n  column-gap: 24px;\n}\n\n\n.pane.behaviour .allow-block {\n  max-width: none;\n}\n\n\n.wide-list li {\n  gap: 8px;\n}\n\n\n.wide-list li > .handle {\n  min-width: 0;\n  flex: 1 1 auto;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.wide-list li button {\n  flex: none;\n}\n\n\n.wide-list:has(li:nth-child(31)) {\n  max-height: 320px;\n  overflow-y: auto;\n}\n\n\nsection[aria-labelledby=\"h-langs\"] {\n  border-left: 4px solid #4a9dd9;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-flags\"] {\n  border-left: 4px solid #d9534f;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-location\"] {\n  border-left: 4px solid #5f8a3c;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-watch\"] {\n  border-left: 4px solid #a86fd0;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-signals\"] {\n  border-left: 4px solid #c62828;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-shovel\"] {\n  border-left: 4px solid #7a5230;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-annoy\"] {\n  border-left: 4px solid #3fae95;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-quotes\"] {\n  border-left: 4px solid #7f8fa6;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-verified\"] {\n  border-left: 4px solid #5c7cfa;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-media\"] {\n  border-left: 4px solid #d67ab1;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-bait\"] {\n  border-left: 4px solid #c9a227;\n  padding-left: 14px;\n}\n\nsection[aria-labelledby=\"h-clutter\"] {\n  border-left: 4px solid #8a939b;\n  padding-left: 14px;\n}\n\nsection.pane.behaviour {\n  border-left: 4px solid var(--accent);\n  padding-left: 14px;\n}\n\n\nsection[aria-labelledby=\"h-source\"] {\n  border-left: 4px solid #e2761b;\n  padding-left: 14px;\n}\n\n\n.tabs {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 4px;\n  margin: 26px 0 18px;\n  border-bottom: 1px solid var(--line);\n}\n\n.tabs button {\n  appearance: none;\n  background: none;\n  border: none;\n  border-bottom: 2px solid transparent;\n  margin-bottom: -1px;\n  padding: 10px 16px;\n  font: inherit;\n  font-size: 14px;\n  color: var(--muted);\n  cursor: pointer;\n  border-radius: 6px 6px 0 0;\n}\n\n.tabs button:hover {\n  color: var(--ink);\n  background: var(--surface);\n}\n\n.tabs button.on {\n  color: var(--ink);\n  border-bottom-color: var(--accent);\n  font-weight: 600;\n}\n\n@media (max-width: 760px) {\n  .tabs button {\n    padding: 9px 11px;\n    font-size: 13px;\n  }\n}\n\n\n.pane {\n  position: relative;\n}\n\n.strip-colour {\n  position: absolute;\n  top: 16px;\n  right: 18px;\n  display: flex;\n  align-items: center;\n  gap: 6px;\n}\n\n.strip-colour button {\n  font-size: 12px;\n  padding: 4px 8px;\n}\n\n\nlabel small ul {\n  margin: 6px 0 0;\n  padding-left: 18px;\n}\n\nlabel small li {\n  margin-bottom: 4px;\n}\n\nlabel small li:last-child {\n  margin-bottom: 6px;\n}\n\n\n.number-input {\n  width: 64px;\n  padding: 4px 6px;\n  font: inherit;\n  text-align: right;\n}\n\n\n.file-button {\n  display: inline-block;\n  cursor: pointer;\n  padding: 6px 12px;\n  border: 1px solid var(--line);\n  border-radius: var(--radius);\n}\n\n\n\n\nhtml.medx-embedded {\n  overscroll-behavior: contain;\n  background: var(--paper);\n}\n\n\n\nhtml.medx-embedded::-webkit-scrollbar {\n  width: 12px;\n  background: var(--paper);\n}\n\nhtml.medx-embedded::-webkit-scrollbar-corner {\n  background: var(--paper);\n}\n\nhtml.medx-embedded::-webkit-scrollbar-track {\n  margin: 16px 0;\n  background: var(--paper);\n}\n\nhtml.medx-embedded::-webkit-scrollbar-thumb {\n  background-color: var(--muted);\n  border: 3px solid transparent;\n  border-radius: 999px;\n  background-clip: padding-box;\n}\n\nhtml.medx-embedded::-webkit-scrollbar-thumb:hover {\n  background-color: var(--ink);\n}\n\n\n\n\n.feature-pill {\n  display: inline-block;\n  margin-left: 8px;\n  padding: 1px 8px;\n  border-radius: 999px;\n  background: #1f9d55;\n  color: #fff;\n  font-size: 11px;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  line-height: 16px;\n  vertical-align: 2px;\n  white-space: nowrap;\n}\n\n.feature-pill::before {\n  content: attr(data-pill);\n}\n\nh2 .feature-pill,\nh3 .feature-pill {\n  vertical-align: 3px;\n}\n\n\n.changelog-list .feature-pill {\n  grid-column: 1;\n  margin: 2px 0 0;\n  justify-self: start;\n}\n\n\n.feature-pill[data-kind=\"updated\"] {\n  background: #2f7fd0;\n}\n\n\n.feature-pill[data-kind=\"fixed\"] {\n  background: #ffbf00;\n  color: #1c1500;\n}\n\n\nbutton.ghost.changelog-button {\n  \n  display: block;\n  width: max-content;\n  box-sizing: border-box;\n  height: 37px;\n  margin-bottom: 12px;\n  padding: 0 14px;\n  line-height: 35px;\n}\n\n\n.changelog-button.has-unseen::after,\n[role=\"tab\"].has-unseen::after {\n  content: \"\";\n  display: inline-block;\n  width: 7px;\n  height: 7px;\n  margin-left: 6px;\n  border-radius: 50%;\n  background: #1f9d55;\n  vertical-align: 1px;\n}\n\n\n.changelog-overlay {\n  position: fixed;\n  inset: 0;\n  z-index: 50;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 24px;\n}\n\n.changelog-card {\n  width: min(560px, 100%);\n  max-height: min(640px, 100%);\n  display: flex;\n  flex-direction: column;\n  background: var(--surface);\n  color: var(--ink);\n  border: 1px solid var(--line);\n  border-radius: 14px;\n  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);\n}\n\n.changelog-head,\n.changelog-foot {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 14px 18px;\n}\n\n.changelog-head {\n  border-bottom: 1px solid var(--line);\n}\n\n.changelog-head h2 {\n  margin: 0;\n  font-size: 17px;\n}\n\n.changelog-foot {\n  border-top: 1px solid var(--line);\n  justify-content: flex-end;\n}\n\n\n.changelog-list {\n  display: grid;\n  grid-template-columns: max-content 1fr;\n  column-gap: 10px;\n  row-gap: 10px;\n  align-items: start;\n  overflow-y: auto;\n  padding: 4px 18px 14px;\n  overscroll-behavior: contain;\n}\n\n.changelog-list section,\n.changelog-list ul,\n.changelog-list li {\n  display: contents;\n}\n\n.changelog-list h3 {\n  grid-column: 1 / -1;\n  margin: 14px 0 0;\n  font-size: 13px;\n  color: var(--muted);\n}\n\n.changelog-list section.unseen h3 {\n  color: var(--ink);\n}\n\n\n.changelog-toggle {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 2px 4px 2px 0;\n  border: 0;\n  background: none;\n  color: inherit;\n  font: inherit;\n  cursor: pointer;\n}\n\n.changelog-toggle:hover {\n  color: var(--ink);\n}\n\n.changelog-arrow {\n  width: 0;\n  height: 0;\n  border-top: 4px solid transparent;\n  border-bottom: 4px solid transparent;\n  border-left: 5px solid currentColor;\n  transition: transform 0.15s ease;\n}\n\n.changelog-toggle[aria-expanded=\"true\"] .changelog-arrow {\n  transform: rotate(90deg);\n}\n\n.changelog-count {\n  font-weight: 400;\n}\n\n.changelog-count::before {\n  content: \"\u00b7 \";\n}\n\n.changelog-toggle[aria-expanded=\"true\"] .changelog-count {\n  display: none;\n}\n\n\n.changelog-list ul[hidden] {\n  display: none;\n}\n\n.changelog-list li > span:last-child {\n  grid-column: 2;\n  min-width: 0;\n  line-height: 1.45;\n}\n\n\n.picture-label {\n  margin: 4px 0 4px;\n  font-size: 13px;\n  font-weight: 700;\n  color: var(--ink);\n}\n\n\n.section-bar {\n  border: 0;\n  border-top: 1px solid var(--line);\n  margin: 18px 0 14px;\n}\n\n\n.mirror-note {\n  display: block;\n  margin-top: 4px;\n}\n\n\nhtml.medx-embedded .medx-panel-root::before {\n  content: \"\";\n  display: block;\n  position: sticky;\n  top: 0;\n  height: 20px;\n  background: var(--paper);\n  z-index: 20;\n}\n\n\n.picture-thumb {\n  display: inline-flex;\n  vertical-align: middle;\n  margin-left: 12px;\n  border-radius: 6px;\n  overflow: hidden;\n  border: 1px solid var(--line);\n  background: var(--surface);\n}\n\n.picture-thumb[hidden] {\n  display: none;\n}\n\n.picture-thumb img,\n.picture-thumb video {\n  display: block;\n  height: 56px;\n  width: auto;\n  max-width: 100px;\n  object-fit: cover;\n}\n";
 let panelHost = null;
 let panelStarted = false;
 
@@ -179,20 +179,78 @@ function panelDocument(root, wrapper) {
    the backdrop scrolled it. Whatever X had on <html> is put back exactly. */
 let pageOverflowBefore = null;
 
+/* Holding X still behind the open settings: no scrolling — but with the
+   scrollbar's space kept. Hiding the scrollbar widened the page by its
+   width, and everything placed against the window's width moved: X's
+   centered layout by half a scrollbar, a background picture anchored right
+   by a whole one. So something lined up with the settings open shifted when
+   they closed. scrollbar-gutter: stable keeps the space while the page can't
+   scroll, so the page is exactly as wide as ever. What X had is put back on
+   closing. */
+let pageGutterBefore = null;
 function lockPage() {
   if (pageOverflowBefore !== null) return;
-  pageOverflowBefore = document.documentElement.style.overflow;
-  document.documentElement.style.overflow = "hidden";
+  const html = document.documentElement;
+  pageOverflowBefore = html.style.overflow;
+  pageGutterBefore = html.style.scrollbarGutter;
+  html.style.scrollbarGutter = "stable";
+  html.style.overflow = "hidden";
 }
 
 function unlockPage() {
   if (pageOverflowBefore === null) return;
-  document.documentElement.style.overflow = pageOverflowBefore;
+  const html = document.documentElement;
+  html.style.overflow = pageOverflowBefore;
+  html.style.scrollbarGutter = pageGutterBefore || "";
   pageOverflowBefore = null;
+  pageGutterBefore = null;
+}
+
+/* The panel reopens where it was left. It's kept between openings, but a
+   hidden element loses its scroll position, so it's saved on closing and put
+   back on opening — until the page reloads, when it starts at the top. The
+   first opening builds the settings after a moment, so it keeps trying until
+   there's enough page to scroll to. The settings remember their tab, so the
+   position always belongs to the tab that reopens. */
+/* Kept only until the page reloads; earlier builds kept it for good, so what
+   they saved is cleared. */
+let panelScroll = 0;
+try {
+  PAGE.localStorage.removeItem("medx-panel-scroll");
+} catch {}
+
+function savePanelScroll() {
+  if (panelHost) panelScroll = Math.round(panelHost.scrollTop);
+}
+
+function restorePanelScroll() {
+  const y = panelScroll;
+  if (!y) return;
+  let tries = 0;
+  const attempt = () => {
+    if (!panelHost || panelHost.style.display === "none") return;
+    panelHost.scrollTop = y;
+    if (Math.abs(panelHost.scrollTop - y) > 2 && ++tries < 60) requestAnimationFrame(attempt);
+  };
+  requestAnimationFrame(attempt);
+}
+
+function setClickThrough(on, button) {
+  if (!panelHost) return;
+  panelHost.classList.toggle("click-through", on);
+  panelHost.style.background = on ? "transparent" : "rgba(0, 0, 0, 0.55)";
+  panelHost.style.pointerEvents = on ? "none" : "";
+  const b = button || (panelHost.shadowRoot && panelHost.shadowRoot.querySelector(".medx-panel-through"));
+  if (b) b.setAttribute("aria-pressed", on ? "true" : "false");
+  if (on) unlockPage();
+  else lockPage();
 }
 
 function closePanel() {
   if (!panelHost) return;
+  /* Every opening starts without click-through. */
+  if (panelHost.classList.contains("click-through")) setClickThrough(false);
+  savePanelScroll();
   panelHost.style.display = "none";
   unlockPage();
 }
@@ -201,12 +259,15 @@ function openPanel() {
   if (panelHost) {
     panelHost.style.display = "block";
     lockPage();
+    restorePanelScroll();
     return;
   }
   panelHost = document.createElement("div");
   panelHost.id = "medx-settings-panel";
   Object.assign(panelHost.style, {
-    position: "fixed", inset: "0", zIndex: "2147483647",
+    /* The full window's width, over the scrollbar's kept space too, so it
+       isn't left as an undimmed strip down the edge. */
+    position: "fixed", inset: "0", width: "100vw", zIndex: "2147483647",
     background: "rgba(0, 0, 0, 0.55)", overflow: "auto",
     overscrollBehavior: "contain"
   });
@@ -225,15 +286,33 @@ function openPanel() {
   }
 
   const wrapper = document.createElement("div");
+  /* The grip, first in the panel and kept at the top as it scrolls; dragging
+     it moves the whole panel, Close included. */
+  const grip = document.createElement("div");
+  grip.className = "medx-panel-grip";
+  grip.setAttribute("aria-hidden", "true");
   wrapper.className = "medx-panel-root";
   const close = document.createElement("button");
   close.type = "button";
   close.className = "medx-panel-close";
   close.textContent = "Close";
   close.addEventListener("click", closePanel);
+  /* Click through, as in the extension: the panel fades and lets clicks fall
+     to X underneath — backdrop cleared, page free to scroll — while this
+     button, Close and the grip stay solid. Every opening starts without it. */
+  const through = document.createElement("button");
+  through.type = "button";
+  through.className = "medx-panel-through";
+  through.textContent = "Click through";
+  through.setAttribute("aria-pressed", "false");
+  through.addEventListener("click", () => setClickThrough(!panelHost.classList.contains("click-through"), through));
   wrapper.innerHTML = PANEL_HTML;
   wrapper.prepend(close);
+  close.after(through); // floated right too, so it lands just left of Close
+  wrapper.prepend(grip);
   root.appendChild(wrapper);
+  makePanelDraggable(wrapper, grip);
+  attachGripTip(grip, "Drag to move — double-click to center");
 
   /* Closing on a click outside the panel. Not e.target: an event from inside
      a shadow root is retargeted to its host as seen from out here, so every
@@ -249,11 +328,104 @@ function openPanel() {
 
   document.documentElement.appendChild(panelHost);
   lockPage();
+  restorePanelScroll();
 
   if (!panelStarted) {
     panelStarted = true;
     startOptions(panelDocument(root, wrapper));
   }
+}
+
+/* Dragging the panel by its grip, as the extension's pop-up drags: followed
+   on the page, kept so some of the grip stays on screen, remembered for next
+   time, and double-click to centre. */
+/* Where the panel was dragged lasts until the page reloads, then it's
+   centred again — the panel itself is kept between openings, so its position
+   needs no keeping of its own. Earlier builds kept it for good, so what they
+   saved is cleared. */
+const GRIP_ON_SCREEN = 120;
+try {
+  PAGE.localStorage.removeItem("medx-panel-offset");
+} catch {}
+
+/* A tooltip for the grip, in the settings' own style. The browser's
+   built-in one can't be styled at all, so it's replaced: shown after a
+   short pause, as a tooltip would be, and gone on leaving or on starting a
+   drag. */
+function attachGripTip(grip, text) {
+  grip.removeAttribute("title");
+  const tip = document.createElement("span");
+  tip.className = "medx-grip-tip";
+  tip.textContent = text;
+  tip.setAttribute("role", "tooltip");
+  grip.appendChild(tip);
+  let timer = null;
+  const hide = () => {
+    clearTimeout(timer);
+    tip.classList.remove("shown");
+  };
+  grip.addEventListener("mouseenter", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => tip.classList.add("shown"), 500);
+  });
+  grip.addEventListener("mouseleave", hide);
+  grip.addEventListener("pointerdown", hide);
+  grip.addEventListener("dblclick", hide);
+}
+
+function makePanelDraggable(wrapper, grip) {
+  let offset = { x: 0, y: 0 };
+  const show = () => {
+    wrapper.style.transform = offset.x || offset.y ? `translate(${offset.x}px, ${offset.y}px)` : "";
+  };
+  const remember = () => {};
+  const limit = (wanted) => {
+    const r = grip.getBoundingClientRect();
+    /* Not laid out yet — hidden, or measured too soon — and there's nothing to
+       measure against: a zero-size grip would read as off-screen and shove the
+       pop-up aside. Leave it as it is until there's a real size. */
+    if (!r.width || !r.height) return { x: Math.round(wanted.x), y: Math.round(wanted.y) };
+    const left0 = r.left - offset.x;
+    const top0 = r.top - offset.y;
+    const minX = GRIP_ON_SCREEN - (left0 + r.width);
+    const maxX = PAGE.innerWidth - GRIP_ON_SCREEN - left0;
+    const minY = -top0;
+    const maxY = PAGE.innerHeight - r.height - top0;
+    return {
+      x: Math.round(Math.min(maxX, Math.max(minX, wanted.x))),
+      y: Math.round(Math.min(maxY, Math.max(minY, wanted.y)))
+    };
+  };
+  show();
+  requestAnimationFrame(() => {
+    offset = limit(offset);
+    show();
+  });
+  grip.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const start = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+    wrapper.classList.add("dragging");
+    const move = (ev) => {
+      offset = limit({ x: start.ox + ev.clientX - start.x, y: start.oy + ev.clientY - start.y });
+      show();
+    };
+    const end = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", end);
+      document.removeEventListener("pointercancel", end);
+      wrapper.classList.remove("dragging");
+      remember();
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", end);
+    document.addEventListener("pointercancel", end);
+  });
+  grip.addEventListener("dblclick", () => {
+    offset = { x: 0, y: 0 };
+    show();
+    remember();
+  });
 }
 
 const PANEL_FRAME_CSS = `
@@ -265,6 +437,105 @@ const PANEL_FRAME_CSS = `
     position: relative;
     min-height: calc(100vh - 64px);
   }
+  /* The grip, kept at the top of the panel as it scrolls, with a handle in its
+     middle. */
+  .medx-panel-grip {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    touch-action: none;
+  }
+  .medx-panel-grip::before {
+    content: "";
+    width: 132px;
+    height: 5px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.45;
+    transition: opacity 0.15s, width 0.15s;
+  }
+  .medx-panel-grip:hover::before,
+  .medx-panel-root.dragging .medx-panel-grip::before {
+    opacity: 0.85;
+    width: 168px;
+  }
+  .medx-panel-root.dragging .medx-panel-grip {
+    cursor: grabbing;
+  }
+  /* Click through, beside Close, dressed the same; lit in the settings'
+     blue while on. Close is shifted right by half its width, so this is
+     pulled in a little to sit snugly beside it. */
+  .medx-panel-through {
+    position: sticky;
+    top: 8px;
+    float: right;
+    margin: 16px -20px 0 0;
+    z-index: 2;
+    box-sizing: border-box;
+    height: 37px;
+    padding: 0 14px;
+    line-height: 35px;
+    border-radius: 6px;
+    border: 1px solid var(--line, #d7dee4);
+    background: var(--paper, #eceff1);
+    color: var(--ink, #14202a);
+    font: inherit;
+    cursor: pointer;
+  }
+  /* Dressed as the settings' own buttons, like the Changelog button: 6px
+     corners, a thin border, a solid background in the page colour. */
+  .medx-panel-close:hover,
+  .medx-panel-through:hover {
+    border-color: var(--muted, #5b6b78);
+  }
+  .medx-panel-through[aria-pressed="true"] {
+    background: var(--accent, #1d4e89);
+    border-color: var(--accent, #1d4e89);
+    color: var(--paper, #fff);
+  }
+  /* While clicking through: everything but the grip and the two buttons
+     fades and lets clicks past, and the panel's own background thins to a
+     tint, so X shows through. */
+  :host(.click-through) .medx-panel-root {
+    pointer-events: none;
+    background: color-mix(in srgb, var(--paper, #eceff1) 35%, transparent) !important;
+  }
+  :host(.click-through) .medx-panel-root > :not(.medx-panel-grip):not(.medx-panel-close):not(.medx-panel-through) {
+    opacity: 0.35;
+  }
+  :host(.click-through) .medx-panel-grip,
+  :host(.click-through) .medx-panel-close,
+  :host(.click-through) .medx-panel-through {
+    pointer-events: auto;
+  }
+  /* The grip's tooltip, in the settings' style — the panel shares the
+     settings page's colours, so it uses them directly. */
+  .medx-grip-tip {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-2px);
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--accent, #1d4e89);
+    background: var(--accent-soft, #e3ecf6);
+    color: var(--ink, #14202a);
+    font: 500 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s, transform 0.15s;
+  }
+  .medx-grip-tip.shown {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
   /* Centred above the "Filtering on" text, as in the extension: the settings
      page has 24px side padding, so the text's middle sits about 61px in from
      the panel's edge. Floated right with that margin, then shifted right by
@@ -273,14 +544,19 @@ const PANEL_FRAME_CSS = `
     position: sticky;
     top: 8px;
     float: right;
-    margin: 8px 61px 0 0;
+    /* Level with the Changelog button, 40px down: the 24px grip, then the
+       page's 16px of padding — and the same 37px height. */
+    margin: 16px 61px 0 0;
     transform: translateX(50%);
     z-index: 2;
-    padding: 6px 14px;
-    border-radius: 999px;
-    border: 1px solid currentColor;
-    background: transparent;
-    color: inherit;
+    box-sizing: border-box;
+    height: 37px;
+    padding: 0 14px;
+    line-height: 35px;
+    border-radius: 6px;
+    border: 1px solid var(--line, #d7dee4);
+    background: var(--paper, #eceff1);
+    color: var(--ink, #14202a);
     font: inherit;
     cursor: pointer;
   }
@@ -301,6 +577,17 @@ function startOptions(document) {
   async function load() {
     const sync = await chrome.storage.sync.get(MEDX.SETTINGS_KEY);
     settings = MEDX.withDefaults(MEDX.migrate(sync[MEDX.SETTINGS_KEY]));
+    /* Nothing saved yet means a fresh install, and to a new user almost every
+       option is new — pills on all of them would be noise. So the changelog
+       starts as seen. Someone upgrading has settings saved already, and sees
+       what changed since they last looked. */
+    if (!sync[MEDX.SETTINGS_KEY] && MEDX.CHANGELOG.length) {
+      MEDX.markChangelogSeen(settings);
+      save();
+    }
+    /* A changelog seen before entries were fingerprinted: switched over, and
+       saved, once (see MEDX.fingerprintSeen). */
+    if (sync[MEDX.SETTINGS_KEY] && MEDX.fingerprintSeen(settings)) save();
     await MEDX.snoozes.load();
     await MEDX.mutedAccounts.load();
   }
@@ -681,6 +968,7 @@ function startOptions(document) {
       r.checked = r.value === settings.mode;
     }
     $("peekKey").checked = settings.peekKey;
+    $("altNote").checked = settings.altNote !== false;
     $("showBadge").checked = settings.showBadge;
     $("badgeGreyscale").checked = settings.badgeGreyscale;
     $("badgeGreyscale").disabled = !settings.showBadge;
@@ -715,6 +1003,32 @@ function startOptions(document) {
     $("backgroundPosition").value = settings.backgroundPosition || "center";
     const bgScale = settings.backgroundScale || 100;
     $("backgroundScale").value = String(bgScale);
+
+    /* The second picture's own size, height and dim. */
+    const bgScale2 = settings.backgroundScale2 || 100;
+    $("backgroundScale2").value = String(bgScale2);
+    if (document.activeElement !== $("backgroundScaleNumber2")) {
+      $("backgroundScaleNumber2").value = String(bgScale2);
+    }
+    $("backgroundFit2").value = settings.backgroundFit2 || "contain";
+    /* Each picture's shift; a box being typed into is left alone. */
+    for (const sfx of ["", "2"]) {
+      for (const axis of ["X", "Y"]) {
+        const key = `backgroundOffset${axis}${sfx}`;
+        const value = String(settings[key] || 0);
+        $(key).value = value;
+        if (document.activeElement !== $(`backgroundOffset${axis}Number${sfx}`)) {
+          $(`backgroundOffset${axis}Number${sfx}`).value = value;
+        }
+      }
+    }
+    for (const key of ["backgroundMirrorX", "backgroundMirrorY", "backgroundMirrorX2", "backgroundMirrorY2"]) {
+      $(key).checked = !!settings[key];
+    }
+    $("backgroundPosition2").value = settings.backgroundPosition2 || "left";
+    $("backgroundDim2").value = String(settings.backgroundDim2 || 0);
+    $("backgroundScaleValue2").textContent =
+      bgScale2 === 100 ? "as the fit setting gives it" : "of that size";
     /* Left alone while it has focus: a re-render mid-typing would replace
        what is being typed, since every keystroke re-renders this section. */
     if (document.activeElement !== $("backgroundScaleNumber")) {
@@ -728,7 +1042,14 @@ function startOptions(document) {
       "backgroundScale",
       "backgroundScaleNumber",
       "backgroundScaleReset",
-      "backgroundImageClear"
+      "backgroundImageClear",
+      "backgroundMirrorX",
+      "backgroundMirrorY",
+      "backgroundOffsetX",
+      "backgroundOffsetXNumber",
+      "backgroundOffsetY",
+      "backgroundOffsetYNumber",
+      "backgroundOffsetReset"
     ]) {
       $(id).disabled = !settings.backgroundImage;
     }
@@ -751,12 +1072,17 @@ function startOptions(document) {
     $("hideNewPostsBar").checked = settings.hideNewPostsBar;
     for (const [id, key] of NAV_TOGGLES) $(id).checked = settings.sidebar[key];
     $("photoGrid").checked = settings.photoGrid;
+    $("mediaZoom").checked = settings.mediaZoom !== false;
     $("hideWhatsHappening").checked = settings.hideWhatsHappening;
     $("footerToCorner").checked = settings.footerToCorner;
+    $("hideFooter").checked = !!settings.hideFooter;
     $("hideGrokOnPosts").checked = settings.hideGrokOnPosts;
     $("hideWhoToFollow").checked = settings.hideWhoToFollow;
     $("hideRelevantPeople").checked = settings.hideRelevantPeople;
     $("sidebarButton").checked = settings.sidebarButton;
+    $("centerTimeline").checked = !!settings.centerTimeline;
+    $("menuLeft").checked = !!settings.menuLeft;
+    $("flipLayout").checked = !!settings.flipLayout;
     $("hideTodaysNews").checked = settings.hideTodaysNews;
     $("hidePremium").checked = settings.hidePremium;
     $("hideGrok").checked = settings.hideGrok;
@@ -1103,7 +1429,8 @@ function startOptions(document) {
     ["navFollow", "follow"],
     ["navGrok", "grok"],
     ["navCreator", "creatorStudio"],
-    ["navPremium", "premium"]
+    ["navPremium", "premium"],
+    ["navMoney", "money"]
   ];
 
   const LABEL_TOGGLES = [
@@ -1119,8 +1446,6 @@ function startOptions(document) {
     renderModeOverride("verifiedModeOverride", "verified");
 
     const v = settings.verified;
-    /* The exemptions serve both reply rules now, so they follow either. */
-    const anyReplyRule = v.hideBlue || v.hideUnverifiedReplies;
 
     $("hideBlue").checked = v.hideBlue;
     $("hideBusiness").checked = v.hideBusiness;
@@ -1128,12 +1453,26 @@ function startOptions(document) {
     $("hideUnverifiedReplies").checked = v.hideUnverifiedReplies;
     for (const [id, key] of LABEL_TOGGLES) $(id).checked = v.labels[key];
     $("blueRepliesOnly").checked = v.repliesOnly;
+    $("blueLikesThreshold").checked = !!v.likesThreshold;
+    const threadLikes = $("blueMinThreadLikes");
+    threadLikes.textContent = "";
+    const likesNow = Number(v.minThreadLikes) || 1000;
+    for (const value of [100, 250, 500, 1000, 2500, 5000, 10000, 50000, 100000]) {
+      threadLikes.add(new Option(value.toLocaleString(), String(value), false, value === likesNow));
+    }
     $("blueSelfReplies").checked = v.allowSelfReplies;
     $("blueFollowedReplies").checked = v.allowFollowedReplies;
+    $("unverifiedSelfReplies").checked = v.unverifiedAllowSelf !== false;
+    $("unverifiedFollowedReplies").checked = v.unverifiedAllowFollowed !== false;
     /* Blue-only options, so they track the blue switch rather than any badge. */
     $("blueRepliesOnly").disabled = !v.hideBlue;
-    $("blueSelfReplies").disabled = !anyReplyRule;
-    $("blueFollowedReplies").disabled = !anyReplyRule;
+    $("blueLikesThreshold").disabled = !v.hideBlue;
+    threadLikes.disabled = !v.hideBlue || !v.likesThreshold;
+    /* Each rule's exemptions follow its own switch. */
+    $("blueSelfReplies").disabled = !v.hideBlue;
+    $("blueFollowedReplies").disabled = !v.hideBlue;
+    $("unverifiedSelfReplies").disabled = !v.hideUnverifiedReplies;
+    $("unverifiedFollowedReplies").disabled = !v.hideUnverifiedReplies;
 
     const box = $("verified-allowed-list");
     box.textContent = "";
@@ -1338,20 +1677,31 @@ function startOptions(document) {
     return section.getAttribute("aria-labelledby") || "";
   }
 
-  /* Guarded: the page is also loaded headlessly by the tests, where there is
-     no localStorage, and an exception here would take the whole options page
-     down rather than costing it a remembered tab. */
+  /* The tab is remembered only while X's page lasts, as the scroll position
+     is: the pop-up is told which tab it was on when it opens — X's page keeps
+     it, since each opening is a fresh page — and reports each change of tab.
+     After a reload, or in the full settings page, it starts on the first tab.
+     Earlier builds kept the tab for good, so what they saved is cleared.
+
+     Its own check for being the pop-up: the one further down is declared too
+     late in the page to be used this early. */
+  const OPENED_AS_POPUP = window.top !== window || new URLSearchParams(window.location.search).has("popup");
+  try {
+    localStorage.removeItem(TAB_KEY);
+  } catch {}
+
   function remembered() {
-    try {
-      return localStorage.getItem(TAB_KEY) || "";
-    } catch {
-      return "";
-    }
+    return OPENED_AS_POPUP ? new URLSearchParams(window.location.search).get("tab") || "" : "";
   }
 
-  function remember(tab) {
+  function remember() {
+    if (OPENED_AS_POPUP) setTimeout(reportPopupPlace, 0); // once the new tab is showing
+  }
+
+  /* Tells X's page which tab the pop-up is on and where it's scrolled to. */
+  function reportPopupPlace() {
     try {
-      localStorage.setItem(TAB_KEY, tab);
+      window.parent.postMessage({ medx: "popup-scroll", tab: activeTab, y: Math.round(window.scrollY) }, "*");
     } catch {}
   }
 
@@ -1430,6 +1780,360 @@ function startOptions(document) {
       const reset = section.querySelector(".strip-colour button");
       if (reset) reset.disabled = !chosen[id];
     }
+  }
+
+  /* ---------- changelog ---------- */
+
+  const KIND_LABEL = { new: "New", updated: "Updated", fixed: "Fixed" };
+  /* The order the kinds are listed in, and which wins when an option has more
+     than one unseen entry. */
+  const KIND_RANK = { new: 0, updated: 1, fixed: 2 };
+  const kindRank = (kind) => (kind in KIND_RANK ? KIND_RANK[kind] : 0);
+
+  /* What's unseen, as option id -> "new", "updated" or "fixed". If an option
+     is both new in one unseen version and updated in a later one, it's new to
+     this person, so "new" wins; and a change to how it works says more than a
+     fix to it, so "updated" wins over "fixed". */
+  function unseenTargets() {
+    const out = new Map();
+    for (const release of MEDX.unseenChanges(settings.changelogSeen, settings.changelogSeenItems)) {
+      for (const item of release.items) {
+        if (!item.target) continue;
+        const had = out.get(item.target);
+        if (had === undefined || kindRank(item.kind) < kindRank(had)) out.set(item.target, item.kind);
+      }
+    }
+    return out;
+  }
+
+  /* Where a pill goes beside an option's name: inside a heading, or inside
+     the label's title, ahead of its description. */
+  function placePill(el, kind) {
+    const pill = document.createElement("span");
+    pill.className = "feature-pill";
+    /* The word is drawn by CSS from this attribute, not written into the page:
+       tab names and the settings search both read the page's text, and a
+       pill's "New" would turn up in a tab name and in searches for "new". */
+    pill.dataset.pill = KIND_LABEL[kind] || "New";
+    pill.setAttribute("aria-label", KIND_LABEL[kind] || "New");
+    pill.dataset.kind = kind; // coloured by it, as the changelog's are
+
+    if (/^H[1-6]$/.test(el.tagName)) {
+      el.appendChild(pill);
+      return pill;
+    }
+    /* A checkbox whose label sits beside it rather than around it, as in the
+       scored rule lists: the pill goes in that label. */
+    const label = el.closest("label") || (el.id && document.querySelector(`label[for="${el.id}"]`));
+    if (label) {
+      const title = label.querySelector(":scope > span") || label;
+      const small = title.querySelector(":scope > small");
+      if (small) small.before(pill);
+      else title.appendChild(pill);
+      return pill;
+    }
+    /* A control in the middle of a sentence — "Play videos at [1x] speed." —
+       has no label to hold the pill, and straight after the control put it
+       inside the sentence: "at [1x] (New) speed." It goes at the end of the
+       line instead — ahead of a note, if the line ends in one, as it goes
+       ahead of a label's description. */
+    const line = el.closest(".rule-line");
+    if (line) {
+      const note = line.querySelector(":scope > small, :scope > .hint");
+      if (note) note.before(pill);
+      else line.appendChild(pill);
+      return pill;
+    }
+    el.after(pill);
+    return pill;
+  }
+
+  function renderPills() {
+    /* The settings page's pills only — never the changelog's own, which mark
+       each entry New, Updated or Fixed for good. Sweeping those too, Mark all as
+       seen emptied the changelog's pill column, and its text slid into it. */
+    for (const old of document.querySelectorAll(".feature-pill")) {
+      if (!old.closest(".changelog-list")) old.remove();
+    }
+    for (const tab of document.querySelectorAll('[role="tab"].has-unseen')) tab.classList.remove("has-unseen");
+
+    for (const [target, kind] of unseenTargets()) {
+      const el = $(target);
+      if (!el) continue;
+      placePill(el, kind);
+      /* A dot on the tab it's in, or it waits unseen in a tab never opened. */
+      const pane = el.closest(".pane");
+      const tab = pane && document.querySelector(`[role="tab"][data-tab="${idOf(pane)}"]`);
+      if (tab) tab.classList.add("has-unseen");
+    }
+
+    const button = $("changelogButton");
+    if (button) button.classList.toggle("has-unseen", MEDX.unseenChanges(settings.changelogSeen, settings.changelogSeenItems).length > 0);
+  }
+
+  let changelogOverlay = null;
+
+  function closeChangelog() {
+    if (!changelogOverlay) return;
+    changelogOverlay.remove();
+    changelogOverlay = null;
+  }
+
+  function openChangelog() {
+    if (changelogOverlay) return;
+    const unseen = new Set(MEDX.unseenChanges(settings.changelogSeen, settings.changelogSeenItems).map((r) => r.version));
+
+    changelogOverlay = document.createElement("div");
+    changelogOverlay.className = "changelog-overlay";
+    changelogOverlay.addEventListener("click", (e) => {
+      if (e.target === changelogOverlay) closeChangelog();
+    });
+
+    const card = document.createElement("div");
+    card.className = "changelog-card";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-label", "Changelog");
+
+    const head = document.createElement("div");
+    head.className = "changelog-head";
+    const title = document.createElement("h2");
+    title.textContent = "Changelog";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "ghost";
+    close.textContent = "Close";
+    close.addEventListener("click", closeChangelog);
+    head.append(title, close);
+
+    const list = document.createElement("div");
+    list.className = "changelog-list";
+    /* Each version folds away under its heading, so the list stays short as
+       releases pile up: the newest open, every older one collapsed, each time
+       the changelog opens. The heading is a button inside the <h3> — the
+       usual pattern for a section that opens and closes — saying whether it's
+       open, and while collapsed, how many changes are inside. */
+    for (const [index, release] of MEDX.CHANGELOG.entries()) {
+      const section = document.createElement("section");
+      if (unseen.has(release.version)) section.classList.add("unseen");
+      const version = document.createElement("h3");
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "changelog-toggle";
+      const arrow = document.createElement("span");
+      arrow.className = "changelog-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      const label = document.createElement("span");
+      label.textContent = "Version " + release.version;
+      const count = document.createElement("span");
+      count.className = "changelog-count";
+      const n = release.items.length;
+      count.textContent = n + (n === 1 ? " change" : " changes");
+      toggle.append(arrow, label, count);
+      version.appendChild(toggle);
+      const items = document.createElement("ul");
+      items.id = "changelog-" + release.version.replace(/[^0-9a-z]/gi, "-");
+      toggle.setAttribute("aria-controls", items.id);
+      const setOpen = (open) => {
+        items.hidden = !open;
+        toggle.setAttribute("aria-expanded", String(open));
+        section.classList.toggle("collapsed", !open);
+      };
+      setOpen(index === 0);
+      toggle.addEventListener("click", () => setOpen(items.hidden));
+      /* New first, then Updated, then Fixed, each kind kept together — sorted
+         here rather than relying on the order entries are written in, so a
+         new entry can never end up mixed in with the others. The order within
+         each kind is kept as written. */
+      const grouped = [...release.items].sort((a, b) => kindRank(a.kind) - kindRank(b.kind));
+      for (const item of grouped) {
+        const li = document.createElement("li");
+        const tag = document.createElement("span");
+        tag.className = "feature-pill";
+        tag.dataset.pill = KIND_LABEL[item.kind] || "New";
+        tag.dataset.kind = item.kind;
+        const text = document.createElement("span");
+        text.textContent = item.text;
+        li.append(tag, text);
+        items.appendChild(li);
+      }
+      section.append(version, items);
+      list.appendChild(section);
+    }
+
+    const foot = document.createElement("div");
+    foot.className = "changelog-foot";
+    const seen = document.createElement("button");
+    seen.type = "button";
+    seen.className = "ghost"; // the settings' button style, as the Changelog button has
+    seen.id = "changelogMarkSeen";
+    seen.textContent = "Mark all as seen";
+    seen.disabled = unseen.size === 0;
+    seen.addEventListener("click", () => {
+      MEDX.markChangelogSeen(settings);
+      save();
+      renderPills();
+      for (const s of list.querySelectorAll("section.unseen")) s.classList.remove("unseen");
+      seen.disabled = true;
+      seen.textContent = "All seen";
+    });
+    foot.appendChild(seen);
+
+    card.append(head, list, foot);
+    changelogOverlay.appendChild(card);
+    document.body.appendChild(changelogOverlay);
+    close.focus();
+  }
+
+  function buildChangelog() {
+    if ($("changelogButton")) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.id = "changelogButton";
+    button.className = "ghost changelog-button";
+    button.textContent = "Changelog";
+    button.addEventListener("click", openChangelog);
+    const page = document.querySelector(".page");
+    if (page) page.prepend(button);
+
+    /* Escape closes the changelog before anything else hears it. In the
+       pop-up, Escape would otherwise close the whole settings pop-up, and in
+       the userscript the panel's own Escape handler would. Listening on window
+       in the capture phase runs ahead of both. */
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key !== "Escape" || !changelogOverlay) return;
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+        closeChangelog();
+      },
+      true
+    );
+
+    renderPills();
+  }
+
+  /* A thumbnail of each picture beside its label, so it's clear at a glance
+     which is which. Its own shape — a fixed height, the width following the
+     picture — with a video showing its first frame and mirroring shown too.
+     Rebuilt only when the picture or its mirroring changes: the picture can
+     be several megabytes, and this runs on every refresh. */
+  const thumbShown = {};
+
+  function setThumb(n, data, mx, my) {
+    const holder = $("backgroundThumb" + n);
+    if (!holder) return;
+    const key = data ? data.length + ":" + data.slice(-32) + ":" + (mx ? 1 : 0) + (my ? 1 : 0) : "";
+    if (thumbShown[n] === key) return;
+    thumbShown[n] = key;
+    holder.textContent = "";
+    if (!data) {
+      holder.hidden = true;
+      return;
+    }
+    const video = /^data:video\//.test(data);
+    const el = document.createElement(video ? "video" : "img");
+    if (video) {
+      el.muted = true;
+      el.preload = "metadata";
+    } else {
+      el.alt = "";
+    }
+    el.src = data;
+    if (mx || my) el.style.transform = `scale(${mx ? -1 : 1}, ${my ? -1 : 1})`;
+    holder.appendChild(el);
+    holder.hidden = false;
+  }
+
+  function renderPictureThumbs(got) {
+    setThumb(1, got.medxBackgroundImage, settings.backgroundMirrorX, settings.backgroundMirrorY);
+    setThumb(2, got.medxBackgroundImage2, settings.backgroundMirrorX2, settings.backgroundMirrorY2);
+  }
+
+  /* The second picker: usable once there's a first picture, since a pair
+     needs both, and saying when a video first picture means it's ignored. */
+  /* The pictures, read from storage once and kept: together they can run to
+     nine megabytes, and this ran on every full render — every checkbox that
+     re-renders the page re-read both. Dropped when either changes, by
+     whichever page changed it. */
+  let picturesCache = null;
+  const PICTURE_KEYS = ["medxBackgroundImage", "medxBackgroundImage2"];
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && PICTURE_KEYS.some((k) => k in changes)) picturesCache = null;
+    });
+  } catch {}
+
+  async function pictures() {
+    if (!picturesCache) picturesCache = await chrome.storage.local.get(PICTURE_KEYS);
+    return picturesCache;
+  }
+
+  async function renderPairStatus() {
+    if (!$("backgroundImageFile2")) return;
+    const got = await pictures();
+    const first = got.medxBackgroundImage;
+    const second = got.medxBackgroundImage2;
+    renderPictureThumbs(got);
+    $("backgroundImageFile2").disabled = !first;
+    $("backgroundImageClear2").disabled = !second;
+    for (const id of [
+      "backgroundFit2",
+      "backgroundScale2",
+      "backgroundScaleNumber2",
+      "backgroundScaleReset2",
+      "backgroundPosition2",
+      "backgroundDim2",
+      "backgroundMirrorX2",
+      "backgroundMirrorY2",
+      "backgroundOffsetX2",
+      "backgroundOffsetXNumber2",
+      "backgroundOffsetY2",
+      "backgroundOffsetYNumber2",
+      "backgroundOffsetReset2"
+    ]) {
+      $(id).disabled = !second;
+    }
+    const status = $("backgroundImageStatus2");
+    if (!first) status.textContent = "set picture 1 first";
+    else if (second && /^data:video\//.test(first)) status.textContent = "ignored while picture 1 is a video";
+    else if (second) status.textContent = "picture set";
+    else status.textContent = "";
+  }
+
+  /* The pop-up reopens where it was left — only on the same tab, since a
+     position in one tab means nothing in another. Each opening is a fresh
+     page, so X's page keeps the position for it: this reports where it is,
+     shortly after scrolling stops, and is told where it was when it opens.
+     That lasts only until X reloads, then it starts at the top. Not in the
+     full settings tab, which opens at the top as usual. The userscript's
+     panel does the same thing its own way. */
+  const SCROLL_KEY = "medx-popup-scroll";
+
+  function rememberPopupScroll() {
+    /* Earlier builds kept the position for good; it no longer outlasts a
+       reload of X, so what they saved is cleared — from the full settings
+       page too, where it would otherwise linger. */
+    try {
+      localStorage.removeItem(SCROLL_KEY);
+    } catch {}
+    if (!embedded) return;
+    /* The position belongs to the tab the pop-up was told to open on — only
+       if that tab is the one showing, should it no longer exist. */
+    const params = new URLSearchParams(window.location.search);
+    const y = Number(params.get("scrollY"));
+    if (params.get("tab") === activeTab && y > 0) {
+      requestAnimationFrame(() => window.scrollTo(0, y));
+    }
+    let timer = null;
+    window.addEventListener(
+      "scroll",
+      () => {
+        clearTimeout(timer);
+        timer = setTimeout(reportPopupPlace, 150);
+      },
+      { passive: true }
+    );
   }
 
   function buildTabs() {
@@ -1766,7 +2470,16 @@ function startOptions(document) {
       volume.add(new Option(value + "%", String(value), false, value === settings.media.videoVolume));
     }
 
+    const speed = $("videoSpeed");
+    speed.textContent = "";
+    const speedNow = Number(settings.media.playbackSpeed) || 1;
+    for (const value of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) {
+      speed.add(new Option(value === 1 ? "1x (normal)" : value + "x", String(value), false, value === speedNow));
+    }
+
     $("clickPausesMuted").checked = settings.media.clickPausesMuted;
+    $("videoFullQuality").checked = settings.media.fullQuality !== false;
+    $("videoHorizontalVolume").checked = settings.media.horizontalVolume !== false;
 
 
 
@@ -2338,6 +3051,28 @@ function startOptions(document) {
       };
     }
 
+    /* A typed size, kept to two decimal places — 87.5 stays 87.5, and floating
+       point can't leave 87.49999999 behind. The sliders move in whole steps;
+       the boxes are for the in-between sizes. */
+    const toSize = (n) => Math.round(n * 100) / 100;
+
+    /* Local storage holds about 10MB, and two pictures of up to 5MB each —
+       a third more once encoded — could overflow it. So a picture is only
+       stored if, with the other one, it leaves room for everything else kept
+       there. */
+    const STORAGE_BUDGET = 9 * 1024 * 1024;
+
+    async function fitsBesides(otherKey, data) {
+      const got = await chrome.storage.local.get(otherKey);
+      const other = got[otherKey] ? got[otherKey].length : 0;
+      if (other + data.length > STORAGE_BUDGET) {
+        throw new Error(
+          `together the two pictures would be ${((other + data.length) / 1048576).toFixed(1)}MB, ` +
+            `more than the ${STORAGE_BUDGET / 1048576}MB there's room for — try a smaller one`
+        );
+      }
+    }
+
     $("backgroundImageFile").addEventListener("change", async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
@@ -2345,7 +3080,9 @@ function startOptions(document) {
       status.textContent = "reading…";
       try {
         const { data, width, height, kind } = await prepareBackground(file);
+        await fitsBesides("medxBackgroundImage2", data);
         await chrome.storage.local.set({ medxBackgroundImage: data });
+        picturesCache = null;
 
         /* Storage can accept the write and still be over quota, so it is read
            back rather than assumed. */
@@ -2357,6 +3094,7 @@ function startOptions(document) {
         settings.backgroundImage = true;
         save();
         renderAll();
+        renderPairStatus();
         status.textContent = `${width ? width + "x" + height + " " : ""}${kind}, ${Math.round(
           data.length / 1024
         )}kB`;
@@ -2368,10 +3106,54 @@ function startOptions(document) {
     });
 
     $("backgroundImageClear").addEventListener("click", async () => {
-      await chrome.storage.local.remove("medxBackgroundImage");
-      settings.backgroundImage = false;
+      /* With a second picture set, it moves up to become the only one, rather
+         than both disappearing. */
+      const got = await chrome.storage.local.get("medxBackgroundImage2");
+      if (got.medxBackgroundImage2) {
+        await chrome.storage.local.set({ medxBackgroundImage: got.medxBackgroundImage2 });
+        await chrome.storage.local.remove("medxBackgroundImage2");
+        picturesCache = null;
+      } else {
+        await chrome.storage.local.remove("medxBackgroundImage");
+        picturesCache = null;
+        settings.backgroundImage = false;
+      }
       save();
       renderAll();
+      renderPairStatus();
+    });
+
+    /* The second picture: images only, animated ones included. */
+    $("backgroundImageFile2").addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const status = $("backgroundImageStatus2");
+      status.textContent = "reading…";
+      try {
+        if (/^video\//.test(file.type)) {
+          throw new Error("a video can't be paired — the second picture has to be an image");
+        }
+        const { data, width, height, kind } = await prepareBackground(file);
+        await fitsBesides("medxBackgroundImage", data);
+        await chrome.storage.local.set({ medxBackgroundImage2: data });
+        picturesCache = null;
+        const check = await chrome.storage.local.get("medxBackgroundImage2");
+        if (!check.medxBackgroundImage2) throw new Error("the image could not be stored");
+        renderPairStatus();
+        status.textContent = `${width ? width + "x" + height + " " : ""}${kind}, ${Math.round(
+          data.length / 1024
+        )}kB`;
+      } catch (err) {
+        status.textContent = String((err && err.message) || err);
+        console.error("[MED-X] second background image:", err);
+      }
+      e.target.value = "";
+    });
+
+    $("backgroundImageClear2").addEventListener("click", async () => {
+      await chrome.storage.local.remove("medxBackgroundImage2");
+      picturesCache = null;
+      renderPairStatus();
     });
 
     $("postVeil").addEventListener("change", (e) => {
@@ -2382,6 +3164,103 @@ function startOptions(document) {
 
     $("postVeilColour").addEventListener("change", (e) => {
       settings.postVeilColour = e.target.value;
+      save();
+    });
+
+    /* A slider and its typed box, kept in step, for a numeric setting —
+       behaving as the size controls do: a valid number applies as it's typed,
+       one out of range is tidied on leaving the box, and an emptied box keeps
+       the last value. */
+    function bindSliderBox(sliderId, boxId, key, min, max) {
+      const box = $(boxId);
+      const apply = (n) => {
+        settings[key] = n;
+        save();
+        renderBehaviour();
+      };
+      $(sliderId).addEventListener("input", (e) => apply(Number(e.target.value)));
+      box.addEventListener("input", () => {
+        const text = box.value.trim();
+        const n = Math.round(Number(text));
+        if (text === "" || text === "-" || !Number.isFinite(n) || n < min || n > max) return;
+        apply(n);
+      });
+      box.addEventListener("change", () => {
+        const text = box.value.trim();
+        const raw = text === "" || text === "-" ? NaN : Math.round(Number(text));
+        const n = Number.isFinite(raw) ? Math.min(max, Math.max(min, raw)) : settings[key] || 0;
+        box.value = String(n);
+        apply(n);
+      });
+      box.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") box.blur();
+      });
+    }
+
+    /* Each picture's shift from its anchor, across and down. */
+    for (const sfx of ["", "2"]) {
+      bindSliderBox(`backgroundOffsetX${sfx}`, `backgroundOffsetXNumber${sfx}`, `backgroundOffsetX${sfx}`, -1500, 1500);
+      bindSliderBox(`backgroundOffsetY${sfx}`, `backgroundOffsetYNumber${sfx}`, `backgroundOffsetY${sfx}`, -1500, 1500);
+      $(`backgroundOffsetReset${sfx}`).addEventListener("click", () => {
+        settings[`backgroundOffsetX${sfx}`] = 0;
+        settings[`backgroundOffsetY${sfx}`] = 0;
+        save();
+        renderBehaviour();
+      });
+    }
+
+    /* The second picture's controls, separate from the first's. The size box
+       works as the first one does: applied as you type when valid, tidied
+       into range on leaving, an emptied box keeping the last size. */
+    $("backgroundScale2").addEventListener("input", (e) => {
+      settings.backgroundScale2 = Number(e.target.value);
+      save();
+      renderBehaviour();
+    });
+    const scaleBox2 = $("backgroundScaleNumber2");
+    scaleBox2.addEventListener("input", () => {
+      const text = scaleBox2.value.trim();
+      const n = toSize(Number(text));
+      if (text === "" || !Number.isFinite(n) || n < 1 || n > 200) return;
+      settings.backgroundScale2 = n;
+      save();
+      renderBehaviour();
+    });
+    scaleBox2.addEventListener("change", () => {
+      const text = scaleBox2.value.trim();
+      const raw = text === "" ? NaN : toSize(Number(text));
+      const n = Number.isFinite(raw) ? Math.min(200, Math.max(1, raw)) : settings.backgroundScale2 || 100;
+      settings.backgroundScale2 = n;
+      scaleBox2.value = String(n);
+      save();
+      renderBehaviour();
+    });
+    scaleBox2.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") scaleBox2.blur();
+    });
+    $("backgroundScaleReset2").addEventListener("click", () => {
+      settings.backgroundScale2 = 100;
+      save();
+      renderBehaviour();
+    });
+    /* Mirroring, each picture its own. */
+    for (const key of ["backgroundMirrorX", "backgroundMirrorY", "backgroundMirrorX2", "backgroundMirrorY2"]) {
+      $(key).addEventListener("change", (e) => {
+        settings[key] = e.target.checked;
+        save();
+        renderPairStatus(); // the thumbnail shows the mirroring
+      });
+    }
+    $("backgroundFit2").addEventListener("change", (e) => {
+      settings.backgroundFit2 = e.target.value;
+      save();
+    });
+    $("backgroundPosition2").addEventListener("change", (e) => {
+      settings.backgroundPosition2 = e.target.value;
+      save();
+    });
+    $("backgroundDim2").addEventListener("change", (e) => {
+      settings.backgroundDim2 = Number(e.target.value);
       save();
     });
 
@@ -2399,7 +3278,7 @@ function startOptions(document) {
     const scaleBox = $("backgroundScaleNumber");
     const readScale = () => {
       if (scaleBox.value.trim() === "") return null;
-      const n = Math.round(Number(scaleBox.value));
+      const n = toSize(Number(scaleBox.value));
       return Number.isFinite(n) && n >= 1 && n <= 200 ? n : null;
     };
 
@@ -2416,7 +3295,7 @@ function startOptions(document) {
          empty box used to be clamped up to 1% and shrink the background to
          almost nothing the moment you cleared it to type a new value. */
       const text = scaleBox.value.trim();
-      const raw = text === "" ? NaN : Math.round(Number(text));
+      const raw = text === "" ? NaN : toSize(Number(text));
       const n = Number.isFinite(raw) ? Math.min(200, Math.max(1, raw)) : settings.backgroundScale || 100;
       settings.backgroundScale = n;
       scaleBox.value = String(n);
@@ -2555,18 +3434,24 @@ function startOptions(document) {
 
     for (const key of [
       "peekKey",
+      "altNote",
       "showBadge",
       "badgeGreyscale",
       "exemptAnsweredByAuthor",
       "exemptFollowing",
       "hideNewPostsBar",
       "photoGrid",
+      "mediaZoom",
       "hideWhatsHappening",
       "footerToCorner",
+      "hideFooter",
       "hideGrokOnPosts",
       "hideWhoToFollow",
       "hideRelevantPeople",
       "sidebarButton",
+      "centerTimeline",
+      "menuLeft",
+      "flipLayout",
       "hideTodaysNews",
       "hidePremium",
       "hideGrok",
@@ -2748,8 +3633,29 @@ function startOptions(document) {
       save();
     });
 
+    $("blueLikesThreshold").addEventListener("change", (e) => {
+      settings.verified.likesThreshold = e.target.checked;
+      save();
+      renderVerified();
+    });
+
+    $("blueMinThreadLikes").addEventListener("change", (e) => {
+      settings.verified.minThreadLikes = Number(e.target.value);
+      save();
+    });
+
     $("blueFollowedReplies").addEventListener("change", (e) => {
       settings.verified.allowFollowedReplies = e.target.checked;
+      save();
+    });
+
+    $("unverifiedFollowedReplies").addEventListener("change", (e) => {
+      settings.verified.unverifiedAllowFollowed = e.target.checked;
+      save();
+    });
+
+    $("unverifiedSelfReplies").addEventListener("change", (e) => {
+      settings.verified.unverifiedAllowSelf = e.target.checked;
       save();
     });
 
@@ -3035,11 +3941,26 @@ function startOptions(document) {
       save();
     });
 
+    $("videoFullQuality").addEventListener("change", (e) => {
+      settings.media.fullQuality = e.target.checked;
+      save();
+    });
+
+    $("videoHorizontalVolume").addEventListener("change", (e) => {
+      settings.media.horizontalVolume = e.target.checked;
+      save();
+    });
+
 
 
 
     $("videoVolume").addEventListener("change", (e) => {
       settings.media.videoVolume = e.target.value === "" ? null : Number(e.target.value);
+      save();
+    });
+
+    $("videoSpeed").addEventListener("change", (e) => {
+      settings.media.playbackSpeed = Number(e.target.value);
       save();
     });
 
@@ -3127,7 +4048,7 @@ function startOptions(document) {
   /* Shown as the pop-up over X rather than in its own tab. Esc inside the
      frame never reaches the page around it, so the frame asks the page to
      close it. */
-  const embedded = window.top !== window;
+  const embedded = window.top !== window || new URLSearchParams(window.location.search).has("popup");
   if (embedded) {
     document.documentElement.classList.add("medx-embedded");
     document.addEventListener("keydown", (e) => {
@@ -3143,6 +4064,10 @@ function startOptions(document) {
     buildTabs();
     buildStripPickers();
     applyTabs();
+    /* After the tabs, which take their names from headings' text. */
+    buildChangelog();
+    renderPairStatus();
+    rememberPopupScroll();
   });
 })();
 
@@ -3166,6 +4091,13 @@ PAGE.MEDX = PAGE.MEDX || {};
 PAGE.MEDX.openSettingsPanel = openPanel;
 
 followOtherTabs();
+
+/* A fresh install starts with the changelog seen, as the extension does when
+   Chrome reports an install: nothing saved yet means a new user, to whom the
+   sidebar button's green dot would only nag. */
+if (GM_getValue("sync:settings") === undefined) {
+  GM_setValue("sync:settings", { changelogSeen: "3.2.0" });
+}
 
 /* ---------- the extension ---------- */
 
@@ -3475,6 +4407,8 @@ try {
         to: value.legacy.in_reply_to_screen_name || null,
         toId: value.legacy.in_reply_to_status_id_str || null,
         conv: value.legacy.conversation_id_str || null,
+        /* Its like count, for rules that care how popular a thread is. */
+        likes: Number.isFinite(value.legacy.favorite_count) ? value.legacy.favorite_count : null,
         quoted,
         quotedAuthor,
         author,
@@ -3682,7 +4616,8 @@ try {
         prev &&
         prev.conv === (item.conv || null) &&
         prev.author === (item.author || null) &&
-        prev.quoted === (item.quoted || null)
+        prev.quoted === (item.quoted || null) &&
+        prev.likes === (item.likes ?? null)
       ) {
         continue;
       }
@@ -3693,6 +4628,7 @@ try {
         conv: item.conv || null,
         quoted: item.quoted || null,
         quotedAuthor: item.quotedAuthor || null,
+        likes: item.likes ?? null,
         norm: item.norm || null,
         author: item.author || null,
         lang: item.lang || null,
@@ -3720,6 +4656,126 @@ try {
     return /\/i\/api\/graphql\//.test(url || "");
   }
 
+  /* ---------- videos at full quality from the start ----------
+
+     X plays video by adaptive streaming: it fetches a master playlist listing
+     every quality the video comes in, starts low, and steps up as it judges
+     the connection — so videos open blurry and switch, often badly. With
+     this on, that playlist is cut down to its best entry before X's player
+     reads it, leaving it one quality to play: full quality from the first
+     frame, nothing to switch to. Everything else in the playlist — audio
+     tracks, captions, header lines — is kept, so sound and subtitles work.
+
+     Only X's video server's master playlists, with a choice to make: the
+     per-quality playlists, the video itself, and anything else go past
+     untouched, and so does any playlist that isn't quite what's expected —
+     the worst case is X's own behaviour. The setting lives in the isolated
+     world; it's mirrored into the page's localStorage, which this world can
+     read the moment a playlist arrives. */
+  const FULL_QUALITY_KEY = "medx-video-full";
+
+  function fullQualityWanted() {
+    try {
+      return localStorage.getItem(FULL_QUALITY_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  function isVideoPlaylist(url) {
+    try {
+      const u = new URL(url, window.location.href);
+      return /(^|\.)video\.twimg\.com$/.test(u.hostname) && /\.m3u8$/i.test(u.pathname);
+    } catch {
+      return false;
+    }
+  }
+
+  /* An attribute's value from a tag's attribute list. Matched at the start or
+     after a comma, so BANDWIDTH doesn't also match AVERAGE-BANDWIDTH. */
+  function hlsAttr(line, name) {
+    const m = new RegExp("(?:[:,])" + name + "=(\"[^\"]*\"|[^,]*)").exec(line);
+    return m ? m[1].replace(/^"|"$/g, "") : null;
+  }
+
+  /* The playlist's addresses made whole, so it reads the same wherever it's
+     handed over from — a fetch's rebuilt response has no address of its own
+     to resolve them against. */
+  function absolutize(line, base) {
+    const whole = (ref) => {
+      try {
+        return new URL(ref, base).href;
+      } catch {
+        return ref;
+      }
+    };
+    if (line.startsWith("#")) return line.replace(/URI="([^"]*)"/g, (_, ref) => `URI="${whole(ref)}"`);
+    return line.trim() ? whole(line.trim()) : line;
+  }
+
+  function bestOnlyPlaylist(text, base) {
+    if (typeof text !== "string" || !text.startsWith("#EXTM3U")) return text;
+    const lines = text.split(/\r?\n/);
+    const variants = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].startsWith("#EXT-X-STREAM-INF:")) continue;
+      let j = i + 1;
+      while (j < lines.length && (!lines[j].trim() || lines[j].startsWith("#"))) j++;
+      if (j >= lines.length) return text; // an entry with no address: not touched
+      const bandwidth = Number(hlsAttr(lines[i], "BANDWIDTH"));
+      if (!Number.isFinite(bandwidth)) return text;
+      const res = /^(\d+)x(\d+)$/.exec(hlsAttr(lines[i], "RESOLUTION") || "");
+      variants.push({ i, j, bandwidth, pixels: res ? Number(res[1]) * Number(res[2]) : 0 });
+    }
+    if (variants.length < 2) return text; // nothing to choose between
+    const best = variants.reduce((a, b) =>
+      b.bandwidth > a.bandwidth || (b.bandwidth === a.bandwidth && b.pixels > a.pixels) ? b : a
+    );
+    const drop = new Set();
+    for (const v of variants) if (v !== best) drop.add(v.i).add(v.j);
+    return lines
+      .filter((_, k) => !drop.has(k))
+      .map((line) => absolutize(line, base))
+      .join("\n");
+  }
+
+  /* On one request: what X's player reads of the response, cut down — the
+     real response read through the browser's own getters, never altered. */
+  const nativeText = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, "responseText");
+  const nativeResponse = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, "response");
+
+  function serveBestOnly(xhr, url) {
+    if (!nativeText || !nativeText.get || !nativeResponse || !nativeResponse.get) return;
+    let rawSeen = null;
+    let served = null;
+    const cut = (raw) => {
+      if (raw !== rawSeen) {
+        rawSeen = raw;
+        try {
+          served = bestOnlyPlaylist(raw, xhr.responseURL || new URL(url, window.location.href).href);
+        } catch {
+          served = raw;
+        }
+      }
+      return served;
+    };
+    const asText = () => !xhr.responseType || xhr.responseType === "text";
+    Object.defineProperty(xhr, "responseText", {
+      configurable: true,
+      get() {
+        const raw = nativeText.get.call(xhr);
+        return xhr.readyState === 4 && asText() ? cut(raw) : raw;
+      }
+    });
+    Object.defineProperty(xhr, "response", {
+      configurable: true,
+      get() {
+        const raw = nativeResponse.get.call(xhr);
+        return xhr.readyState === 4 && asText() && typeof raw === "string" ? cut(raw) : raw;
+      }
+    });
+  }
+
   const open = XMLHttpRequest.prototype.open;
   const send = XMLHttpRequest.prototype.send;
 
@@ -3740,8 +4796,36 @@ try {
      CSRF tokens, which have no business sitting in localStorage and which are
      identical on every GraphQL request anyway, so they're taken live from
      whatever went past most recently. */
+  /* And the account is NOT stored either. The request as X makes it names the
+     account whose "About" panel was open at the time, and it used to be kept
+     whole — so the page's own storage held the name of the last account you'd
+     looked at that way. Only the request's shape is needed: the name is
+     filled in afresh for each lookup. It's blanked before the address is
+     kept, here and in what's remembered for this page. */
+  function withoutAccount(address) {
+    try {
+      const url = new URL(address, location.origin);
+      const variables = JSON.parse(url.searchParams.get("variables") || "{}");
+      let named = false;
+      for (const key of Object.keys(variables)) {
+        if (/screen_?name/i.test(key) && variables[key] !== "") {
+          variables[key] = "";
+          named = true;
+        }
+      }
+      if (!named) return address;
+      url.searchParams.set("variables", JSON.stringify(variables));
+      return url.toString();
+    } catch {
+      return address;
+    }
+  }
+
   try {
-    about.url = localStorage.getItem(ABOUT_KEY) || null;
+    const kept = localStorage.getItem(ABOUT_KEY) || null;
+    about.url = kept ? withoutAccount(kept) : null;
+    /* One kept whole by an earlier version: put back without its account. */
+    if (kept && about.url !== kept) localStorage.setItem(ABOUT_KEY, about.url);
   } catch {}
 
   const setHeader = XMLHttpRequest.prototype.setRequestHeader;
@@ -3759,8 +4843,9 @@ try {
   };
 
   XMLHttpRequest.prototype.send = function (...args) {
+    if (isVideoPlaylist(this.__medxUrl) && fullQualityWanted()) serveBestOnly(this, this.__medxUrl);
     if (/AboutAccountQuery/.test(this.__medxUrl || "")) {
-      about.url = this.__medxUrl;
+      about.url = withoutAccount(this.__medxUrl);
       try {
         localStorage.setItem(ABOUT_KEY, about.url);
       } catch {}
@@ -3799,6 +4884,17 @@ try {
     }
 
     const response = await originalFetch.apply(this, args);
+    /* A video playlist through fetch: handed back rebuilt, cut down. */
+    if (isVideoPlaylist(medxUrl) && fullQualityWanted() && response.ok) {
+      try {
+        const raw = await response.clone().text();
+        const cut = bestOnlyPlaylist(raw, response.url || new URL(medxUrl, window.location.href).href);
+        if (cut !== raw) {
+          return new Response(cut, { status: response.status, statusText: response.statusText, headers: response.headers });
+        }
+      } catch {}
+      return response;
+    }
     try {
       const url = (args[0] && (args[0].url || args[0])) + "";
       if (interesting(url)) {
@@ -3890,7 +4986,9 @@ try {
     grabCorner: (corner) => ask("grabcorner", corner),
     settings: () => ask("settings"),
     bait: () => ask("bait"),
-    explain: (selector) => ask("explain", selector)
+    explain: (selector) => ask("explain", selector),
+    expandInfo: () => ask("expand"),
+    fullscreenClicks: () => ask("fsclicks")
   };
 
   /* The isolated world starts later than we do, so it asks for a replay of
@@ -3949,6 +5047,10 @@ try {
     muteAccountDays: 7,
     /* Hold Alt to reveal every collapsed post at once. */
     peekKey: true,
+    /* A small note at the bottom of the screen for as long as Alt is down:
+       the key reveals hidden posts and zooms pictures, and nothing else on
+       screen says it has been taken as held. */
+    altNote: true,
     /* The logo button on each post, which opens the menu. Independent of bait
        scoring: the menu does more than report a score. */
     showBadge: true,
@@ -3976,7 +5078,8 @@ try {
       follow: true,
       grok: true,
       creatorStudio: true,
-      premium: true
+      premium: true,
+      money: true
     },
     /* Sidebar widgets. Matched by their aria-label, which is the only stable
        hook X gives them — no testid — and which is localised, so these stop
@@ -3990,6 +5093,9 @@ try {
     /* X shows several images as a swipeable carousel now. This lays them back
        out as a grid, so a post's pictures are all visible at once. */
     photoGrid: true,
+    /* Alt + scroll zooms pictures and videos in fullscreen and X's media
+       viewer. */
+    mediaZoom: true,
     /* Post text. null on any of these leaves X's own. */
     font: {
       family: null,
@@ -4016,6 +5122,26 @@ try {
        or "bird". The colour applies to either. */
     /* A MED-X entry in X's left sidebar that opens the settings over the page. */
     sidebarButton: true,
+    /* Whether the sidebar's nav and Post button are folded away under the
+       logo — set by the chevron on the sidebar, not from the settings page. */
+    sidebarFolded: false,
+    /* Shift X's layout over so the timeline sits in the middle of the window,
+       narrowing the search column to fit when there isn't room. */
+    centerTimeline: false,
+    /* Move X's menu to the window's edge on its side — the left, or the right
+       when the layout is flipped — rather than beside the timeline. (Named for
+       when it could only go left.) */
+    menuLeft: false,
+    /* Mirror X's layout: the menu on the right, the search column on the
+       left. */
+    flipLayout: false,
+    /* The newest changelog version marked as seen. Synced, so pills dismissed
+       on one browser stay dismissed on the others. A fresh install starts with
+       everything seen; see options.js. */
+    changelogSeen: null,
+    /* The entries the release marked seen held at the time, by fingerprint —
+       so ones added to it later still show as new. */
+    changelogSeenItems: null,
     /* Whether a saved settings file carries the background picture too.
        Remembered, since whoever includes it once usually wants it again. */
     backupIncludePicture: false,
@@ -4037,8 +5163,31 @@ try {
        opaque; 0 leaves them clear. */
     postVeil: 0,
     postVeilColour: "#000000",
-    /* A dark veil over the whole picture, percent opaque. */
+    /* A dark veil over the whole picture, percent opaque. With two pictures,
+       this dims the first only. */
     backgroundDim: 0,
+    /* The second picture's own fit, anchor, size and dim — everything the
+       first has, independent of it. Adding a second picture changes nothing
+       about the first. It starts anchored left and fitted whole, so a first
+       picture anchored right makes a pair either side of the timeline. */
+    backgroundFit2: "contain",
+    backgroundPosition2: "left",
+    backgroundScale2: 100,
+    backgroundDim2: 0,
+    /* Mirroring, per picture: left to right, and top to bottom. Stills and
+       video only — an animated picture can't be redrawn without losing its
+       frames, so it's shown as it is. */
+    backgroundMirrorX: false,
+    backgroundMirrorY: false,
+    backgroundMirrorX2: false,
+    backgroundMirrorY2: false,
+    /* A shift from the anchor, per picture, in pixels: across (negative is
+       left) and down (negative is up) — to move a picture out from under the
+       sidebar, say, once it's anchored. */
+    backgroundOffsetX: 0,
+    backgroundOffsetY: 0,
+    backgroundOffsetX2: 0,
+    backgroundOffsetY2: 0,
     /* A colour for the timeline's background, or null to leave X's own. */
     timelineBackground: null,
     /* A second colour turns the background into a gradient between the two;
@@ -4048,6 +5197,9 @@ try {
     /* Park the Terms/Privacy/Cookies links in the corner instead of letting
        them sit under the sidebar panels. */
     footerToCorner: true,
+    /* The Terms and Privacy links off the page altogether; wins over moving
+       them to the corner. */
+    hideFooter: false,
     /* X's "Grok actions" button on each post. */
     hideGrokOnPosts: true,
     hidePremium: true,
@@ -4147,8 +5299,15 @@ try {
         automated: false
       },
       repliesOnly: true,     // the reply guy problem, specifically
+      /* Blue replies hidden only under posts with at least this many likes. */
+      likesThreshold: false,
+      minThreadLikes: 1000,
+      /* The blue checkmark rule's exemptions... */
       allowSelfReplies: true,   // replies inside a thread they started
       allowFollowedReplies: true, // replies from accounts you follow
+      /* ...and the no-checkmark rule's own, set separately. */
+      unverifiedAllowSelf: true,
+      unverifiedAllowFollowed: true,
       allowed: []
     },
     /* Default length for a new snooze, in days. 0 means indefinitely. */
@@ -4273,6 +5432,12 @@ try {
       allowed: [], // accounts whose clips you always want to see
       /* Starting volume for X's player, 0-100, or null to leave it alone. */
       videoVolume: 34,
+      /* Default playback speed for X's videos — one of 0.25 to 2 — each
+         still changeable on its own from the speed pill on the video. */
+      playbackSpeed: 1,
+      /* A horizontal volume slider with the level as a number, in place of
+         X's pop-up one, and the time moved to the left of the bar. */
+      horizontalVolume: true,
 
       /* Portrait clips. Not a TikTok detector — it's the shape reposted
          vertical video comes in, which is a proxy, not proof. */
@@ -4297,6 +5462,10 @@ try {
          video instead of unmuting it, and making clicks land beside the
          attribution strip. Both work by taking the click on the player, so
          one switch covers them. */
+      /* Videos at full quality from the first frame: X's adaptive playlist cut
+         down to its best entry, so there's nothing to start low on or switch
+         between. Done in net.js. */
+      fullQuality: true,
       clickPausesMuted: true,
       /* Held back for now: detection works but misfires often enough that it
          is not worth shipping, so the controls are off the options page and
@@ -4416,13 +5585,33 @@ try {
        only be that choice: a section never touched was saved with its default
        written out. So each one becomes the explicit null that version 2 uses
        for the same meaning, and behaviour is exactly what it was. */
+    /* Only the sections that shipped a default back when a missing key could
+       mean a choice — the four in store 1.0 and 2.0, the releases before
+       version 2. quotemuted's default first reached the store in 2.5.0,
+       already on version 2, so a pre-2 save with no quotemuted key is someone
+       who never had that control, not someone who chose; it is left missing
+       so the shipped "remove" reaches them. A fixed list rather than the
+       current defaults: what those releases shipped won't change, and a
+       default added later must not be mistaken for a choice. */
     if ((settings.version || 1) < 2 && settings.modeOverrides) {
-      const shipped = (MEDX.DEFAULT_SETTINGS && MEDX.DEFAULT_SETTINGS.modeOverrides) || {};
-      for (const key of Object.keys(shipped)) {
+      for (const key of ["language", "shovel", "signals", "video"]) {
         if (!(key in settings.modeOverrides)) settings.modeOverrides[key] = null;
       }
     }
     if ((settings.version || 1) < 2) settings.version = 2;
+
+    /* The two "keep replies" exemptions used to serve both reply rules, blue
+       checkmark and no checkmark. Each rule has its own pair now; a save from
+       before that gives the no-checkmark rule the same choices it had. */
+    if (settings.verified && typeof settings.verified === "object") {
+      const v = settings.verified;
+      if (v.unverifiedAllowSelf === undefined && v.allowSelfReplies !== undefined) {
+        v.unverifiedAllowSelf = v.allowSelfReplies;
+      }
+      if (v.unverifiedAllowFollowed === undefined && v.allowFollowedReplies !== undefined) {
+        v.unverifiedAllowFollowed = v.allowFollowedReplies;
+      }
+    }
 
     /* 2.1 had these as two switches before it was clear they could not be
        separated. Either one having been on means the merged switch is on. */
@@ -4497,11 +5686,11 @@ try {
     "bait.hide", "bait.highlightOnlyScored",
     "flags.enabled", "flags.checkBio", "flags.checkCountryNames",
     "location.enabled", "shovel.enabled",
-    "media.clickPausesMuted", "media.hideShortVideo",
-    "photoGrid", "footerToCorner", "hideChatDock", "hideGrok", "hideGrokOnPosts",
+    "media.clickPausesMuted", "media.hideShortVideo", "media.fullQuality", "media.horizontalVolume",
+    "photoGrid", "mediaZoom", "altNote", "footerToCorner", "hideChatDock", "hideGrok", "hideGrokOnPosts",
     "hidePremium", "hideWhatsHappening", "hideWhoToFollow",
     "sidebar.explore", "sidebar.follow", "sidebar.grok",
-    "sidebar.creatorStudio", "sidebar.premium",
+    "sidebar.creatorStudio", "sidebar.premium", "sidebar.money",
     "verified.repliesOnly", "verified.labels.parody", "verified.labels.commentary",
     "watch.skipTranslatedFromHidden"
   ];
@@ -4659,7 +5848,8 @@ try {
     mutedAccounts: "mutedAccounts",
     snoozedQuotes: "snoozedQuotes",
     mutedWords: "medxMutedWords",
-    backgroundImage: "medxBackgroundImage"
+    backgroundImage: "medxBackgroundImage",
+    backgroundImage2: "medxBackgroundImage2"
   };
 
   MEDX.buildBackup = (settings, local, options = {}) => {
@@ -4670,7 +5860,7 @@ try {
       settings
     };
     for (const [name, key] of Object.entries(MEDX.BACKUP_LOCAL)) {
-      if (name === "backgroundImage" && !options.includePicture) continue;
+      if ((name === "backgroundImage" || name === "backgroundImage2") && !options.includePicture) continue;
       if (local && local[key] !== undefined) out[name] = local[key];
     }
     return out;
@@ -4703,7 +5893,10 @@ try {
     const local = {};
     for (const [name, key] of Object.entries(MEDX.BACKUP_LOCAL)) {
       if (data[name] === undefined) continue;
-      if (name === "backgroundImage") {
+      if (name === "backgroundImage2") {
+        /* The second picture is always an image — a video can't be paired. */
+        if (typeof data[name] !== "string" || !/^data:image\//.test(data[name])) continue;
+      } else if (name === "backgroundImage") {
         if (typeof data[name] !== "string" || !/^data:(image|video)\//.test(data[name])) continue;
       } else if (name === "mutedWords") {
         if (!Array.isArray(data[name])) continue;
@@ -4724,6 +5917,290 @@ try {
         picture: !!local[MEDX.BACKUP_LOCAL.backgroundImage]
       }
     };
+  };
+
+  /* What changed in each version, newest first, shown from the Changelog
+     button on the settings page. Each item can point at the option it's about
+     — `target` is that option's id on the settings page — and while it's
+     unseen, a "New", "Updated" or "Fixed" pill sits beside the option's name.
+     Items with no single option to point at are listed without a pill. An
+     item's `kind` is "new", "updated" or "fixed".
+
+     Kept here, in the shared module, so the extension's settings page, its
+     pop-up and the userscript's panel all show the same list. */
+  /* A new feature with its own on/off option says in its entry whether it
+     ships on — "(On by default)" or "(Off by default)" — from 3.2.0 on.
+     test/changelog-defaults.test.js holds each one to the shipped default. */
+  MEDX.CHANGELOG = [
+    {
+      version: "3.2.0",
+      items: [
+        {
+          kind: "new",
+          text: "Hide blue checkmark replies only under posts with more than a set number of likes, 1,000 to start with. High like count posts are often botted by blue checkmark accounts. (Off by default)",
+          target: "blueLikesThreshold"
+        },
+        {
+          kind: "new",
+          text: "A new Account Red Flags rule, One-word reply, scoring replies that are a single word and nothing else. Worth 1 point. (On by default)",
+          target: "accountSignals-rule-one_word_reply"
+        },
+        {
+          kind: "new",
+          text: "A horizontal volume slider on videos, with the volume shown as a number, in place of X's pop-up one. The time moves to the left of the controls to make room. (On by default)",
+          target: "videoHorizontalVolume"
+        },
+        {
+          kind: "updated",
+          text: "The options to keep replies from accounts you follow, and inside a user's own threads, now sit under each reply rule and can be set separately for each.",
+          target: "unverifiedSelfReplies"
+        },
+        {
+          kind: "updated",
+          text: "With the menu folded away, the chevron shows your notification count, as the Notifications icon would."
+        },
+        {
+          kind: "new",
+          text: "Videos play at full quality from the start, instead of starting blurry and switching up. (On by default)",
+          target: "videoFullQuality"
+        },
+        {
+          kind: "new",
+          text: "A default playback speed for videos, from 0.25x to 2x. (Normal speed by default)",
+          target: "videoSpeed"
+        },
+        {
+          kind: "new",
+          text: "Zoom into pictures and videos with Alt + scroll, in fullscreen and X's media viewer. Alt + drag to move around, double-click to reset, with the zoom level shown by the cursor. (On by default)",
+          target: "mediaZoom"
+        },
+        {
+          kind: "new",
+          text: "A small note at the bottom of the screen while the Alt key is held, the key that reveals hidden posts and zooms pictures. (On by default)",
+          target: "altNote"
+        },
+        {
+          kind: "new",
+          text: "Hide the Money entry X adds to the left sidebar once X Money has been opened. (On by default)",
+          target: "navMoney"
+        },
+        {
+          kind: "updated",
+          text: "Each version in this changelog folds away under its heading, with only the newest open to start with."
+        },
+        {
+          kind: "fixed",
+          text: "The thread author plugging themselves stayed on screen if they had replied to their own plug, kept by \"Never hide a reply the poster answered\". It's hidden now.",
+          target: "selfPromo"
+        },
+        {
+          kind: "fixed",
+          text: "Further bolstering of the Video Player Click-to-Mute Fixes option.",
+          target: "clickPausesMuted"
+        }
+      ]
+    },
+    {
+      version: "3.1.0",
+      items: [
+        {
+          kind: "new",
+          text: "This changelog, with pills marking what's new or updated until you mark all as seen, and a green indicator on the left sidebar button when there's something new."
+        },
+        {
+          kind: "updated",
+          text: "The thread author plugging themselves now also catches requests for likes and reposts, like \"please like this post\".",
+          target: "selfPromo"
+        },
+        {
+          kind: "updated",
+          text: "The thread author plugging themselves now also catches them quoting another of their own posts.",
+          target: "selfPromo"
+        },
+        {
+          kind: "updated",
+          text: "Holding Alt now shows a thread's main post even if it was removed outright.",
+          target: "peekKey"
+        },
+        {
+          kind: "updated",
+          text: "The MED-X button in the sidebar now sits below More, so X's own buttons keep their places.",
+          target: "sidebarButton"
+        },
+        {
+          kind: "new",
+          text: "A chevron under the Post button that will collapse the left sidebar out of sight."
+        },
+        {
+          kind: "new",
+          text: "Center the timeline on the page, with the menu and search column moving over too.",
+          target: "centerTimeline"
+        },
+        {
+          kind: "new",
+          text: "Anchor the menu to the edge of the window on its side, the collapse chevron moving with it.",
+          target: "menuLeft"
+        },
+        {
+          kind: "new",
+          text: "Flip the layout: the menu on the right of the screen, the search column on the left.",
+          target: "flipLayout"
+        },
+        {
+          kind: "new",
+          text: "Hide the Terms and Privacy links altogether.",
+          target: "hideFooter"
+        },
+        {
+          kind: "new",
+          text: "Move a background picture from where it's anchored, side to side and up and down.",
+          target: "backgroundOffsetX"
+        },
+        {
+          kind: "new",
+          text: "Mirror a background picture left to right or top to bottom, each picture on its own.",
+          target: "backgroundMirrorX"
+        },
+        {
+          kind: "updated",
+          text: "The settings pop-up reopens where you left it scrolled mid session."
+        },
+        {
+          kind: "updated",
+          text: "The settings pop-up can be dragged around by the grip at its top; double-click the grip to center it again."
+        },
+        {
+          kind: "new",
+          text: "Click through, in the settings pop-up: it turns see-through so you can click and scroll the page underneath."
+        },
+        {
+          kind: "updated",
+          text: "Background picture sizes can be typed with decimals, like 87.5."
+        },
+        {
+          kind: "new",
+          text: "A second background picture with its own fit, anchor, size and dim - you can now anchor one left and one right to frame the timeline with a pair of images.",
+          target: "backgroundImageFile2"
+        },
+        {
+          kind: "new",
+          text: "A thumbnail of each background picture beside its label, so you can tell at a glance which is which.",
+          target: "h-picture-1"
+        },
+        {
+          kind: "updated",
+          text: "Fullscreening a picture from the timeline shows it at full quality, not the timeline's small preview."
+        }
+      ]
+    },
+    {
+      version: "3.0.0",
+      items: [
+        {
+          kind: "new",
+          text: "A MED-X button in X's sidebar that opens your settings over the page.",
+          target: "sidebarButton"
+        },
+        {
+          kind: "new",
+          text: "Expand and fullscreen buttons on images and videos in posts. Expanding opens X's viewer over your timeline."
+        },
+        {
+          kind: "new",
+          text: "Animated backgrounds: an MP4 or WebM video, or an animated WebP, PNG or GIF.",
+          target: "h-picture"
+        },
+        {
+          kind: "new",
+          text: "Type an exact background size, for the sizes the slider steps over.",
+          target: "backgroundScaleNumber"
+        },
+        {
+          kind: "new",
+          text: "Save your settings to a file and load them in another browser or on another computer.",
+          target: "h-transfer"
+        },
+        {
+          kind: "new",
+          text: "Hide the thread author plugging themselves in the reply right under their own post.",
+          target: "selfPromo"
+        },
+        {
+          kind: "updated",
+          text: "The video player fixes are now one option, and clicking beside the attribution strip pauses the video.",
+          target: "clickPausesMuted"
+        },
+        {
+          kind: "updated",
+          text: "The sidebar logo adapts when X narrows its sidebar to icons.",
+          target: "h-sidebar-logo"
+        }
+      ]
+    }
+  ];
+
+  /* Compares two version strings part by part: -1, 0 or 1. */
+  MEDX.compareVersions = (a, b) => {
+    const pa = String(a || "0").split(".").map(Number);
+    const pb = String(b || "0").split(".").map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const d = (pa[i] || 0) - (pb[i] || 0);
+      if (d) return d > 0 ? 1 : -1;
+    }
+    return 0;
+  };
+
+  /* The changelog entries newer than the last version marked as seen. */
+  /* A short fingerprint of a changelog entry: its kind and wording. Reworded,
+     it's a different entry, and shows as new again. */
+  MEDX.changeKey = (item) => {
+    let h = 5381;
+    const text = (item.kind || "") + "|" + (item.text || "");
+    for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+    return h.toString(36);
+  };
+
+  /* What hasn't been seen: each release with only its unseen entries, newest
+     first. Everything in a release newer than the one last marked seen; and
+     in that release itself, any entry not among those it held when marked —
+     so entries added to a release after it was marked seen, as they are
+     while it's being worked on, still show as new. A seen release saved with
+     no list of its entries, as before there was one, counts as seen whole. */
+  MEDX.unseenChanges = (seen, seenItems) => {
+    const out = [];
+    for (const release of MEDX.CHANGELOG) {
+      const order = seen ? MEDX.compareVersions(release.version, seen) : 1;
+      if (order > 0) {
+        out.push(release);
+      } else if (order === 0 && Array.isArray(seenItems)) {
+        const known = new Set(seenItems);
+        const fresh = release.items.filter((item) => !known.has(MEDX.changeKey(item)));
+        if (fresh.length) out.push({ ...release, items: fresh });
+      }
+    }
+    return out;
+  };
+
+  /* A release marked seen before entries were fingerprinted counts as seen
+     whole — and so its Mark all as seen stayed greyed out, nothing being
+     unseen, and the fingerprints could never be saved. So the switch is made
+     here instead: that release's entries as they are now, every one seen
+     under the old meaning, fingerprinted. Saved straight away by whoever
+     calls this — worked out afresh on each load, it would take in entries
+     added since, and none would ever show as new. True if anything changed. */
+  MEDX.fingerprintSeen = (settings) => {
+    if (!settings || !settings.changelogSeen || Array.isArray(settings.changelogSeenItems)) return false;
+    const release = MEDX.CHANGELOG.find((r) => MEDX.compareVersions(r.version, settings.changelogSeen) === 0);
+    settings.changelogSeenItems = release ? release.items.map(MEDX.changeKey) : [];
+    return true;
+  };
+
+  /* Marked as seen: the newest release, and every entry it holds now. */
+  MEDX.markChangelogSeen = (settings) => {
+    const newest = MEDX.CHANGELOG[0];
+    if (!newest) return;
+    settings.changelogSeen = newest.version;
+    settings.changelogSeenItems = newest.items.map(MEDX.changeKey);
   };
 
   MEDX.withDefaults = (saved, defaults = MEDX.DEFAULT_SETTINGS) => {
@@ -4795,6 +6272,11 @@ try {
     async load() {
       const sync = await chrome.storage.sync.get(MEDX.SETTINGS_KEY);
       store.settings = MEDX.withDefaults(MEDX.migrate(sync[MEDX.SETTINGS_KEY]));
+      /* A changelog seen before entries were fingerprinted: switched over, and
+         saved, once (see MEDX.fingerprintSeen). */
+      if (sync[MEDX.SETTINGS_KEY] && MEDX.fingerprintSeen(store.settings)) {
+        store.saveSettings(store.settings, "changelog entries seen");
+      }
       store.ready = true;
     },
 
@@ -5317,12 +6799,21 @@ try {
     return !!(el && el.closest && el.closest('[data-testid="HoverCard"]'));
   }
 
+  /* The post's own timestamp, linked to its own page. In the timeline it's
+     the first timestamp, in the post's header — but on a post's own page X
+     moves the focal post's timestamp to the bottom, below its content, and a
+     quote card's timestamp (not a link) came first: the post read as having
+     no id at all. So it's the first timestamp that links to a post and isn't
+     inside a quote card; failing that, the first that links to a post. */
   function permalink(article) {
-    const time = [...article.querySelectorAll("time")].find((t) => !inHoverCard(t));
-    const a = time && time.closest("a[href]");
-    if (!a) return null;
-    const m = HANDLE_RE.exec(a.getAttribute("href") || "");
-    return m ? { handle: m[1], id: m[2] } : null;
+    const linked = [...article.querySelectorAll("time")]
+      .filter((t) => !inHoverCard(t))
+      .map((t) => ({ a: t.closest("a[href]"), inQuote: !!t.closest(SEL.quote) }))
+      .filter((x) => x.a && HANDLE_RE.test(x.a.getAttribute("href") || ""));
+    const own = linked.find((x) => !x.inQuote) || linked[0];
+    if (!own) return null;
+    const m = HANDLE_RE.exec(own.a.getAttribute("href"));
+    return { handle: m[1], id: m[2] };
   }
 
   /* The author's display name element, excluding the quoted post's. */
@@ -5615,7 +7106,8 @@ try {
       const settings = MEDX.store.settings;
       const wantsMetrics = !!(
         (settings.bait && settings.bait.enabled) ||
-        (settings.annoyances && settings.annoyances.minLikes)
+        (settings.annoyances && settings.annoyances.minLikes) ||
+        (settings.verified && settings.verified.hideBlue && settings.verified.likesThreshold)
       );
 
       /* Display-name text including emoji X rendered as <img>. Only read when
@@ -5649,10 +7141,18 @@ try {
         handle: link.handle || handleFallback(article),
         replies: wantsMetrics ? count(article, "reply") : 0,
         reposts: wantsMetrics ? count(article, "retweet") : 0,
-        likes: wantsMetrics ? count(article, "like") : 0,
+        /* A post you've liked has an "unlike" button in place of "like". */
+        likes: wantsMetrics ? count(article, "like") || count(article, "unlike") : 0,
         /* Whether the engagement row is on the page at all, so "no likes" can
            be told apart from "not rendered yet". */
         hasMetrics: !!article.querySelector('[role="group"]'),
+        /* A photo, video or link card on the post itself — not one inside a
+           quoted post. */
+        hasMedia: [...article.querySelectorAll('[data-testid="tweetPhoto"], [data-testid="videoPlayer"], [data-testid="card.wrapper"]')]
+          .some((el) => !el.closest(SEL.quote)),
+        /* A quoted post of any kind, by the author line every quote shows —
+           hasQuote needs quoted text, and a quoted picture has none. */
+        hasQuoteCard: [...article.querySelectorAll(SEL.quote)].some((el) => !!el.querySelector('[data-testid="User-Name"]')),
         aiLabel: settings.annoyances && settings.annoyances.aiLabels
           ? detect.aiLabel(cell)
           : null,
@@ -6250,6 +7750,7 @@ try {
     authorAnswered: new Set(), // post ids the thread's author replied to
     quotes: new Map(),       // status id -> the status id it quotes
     quoteAuthors: new Map(), // quoted status id -> the handle that wrote it
+    likes: new Map(),        // status id -> its like count, from X's data or the page
     /* Conversation id per post, and the text seen in each conversation:
        "conv\u0000normalised" -> { handle, id }. Keyed per conversation so a
        stock phrase repeated across unrelated threads isn't treated as a copy. */
@@ -6469,10 +7970,37 @@ try {
       return !!(root && root.toLowerCase() === me);
     },
 
+    /* A post's like count, as read from the page. True the first time it's
+       known, when replies already judged without it may need judging again. */
+    noteLikes(statusId, n) {
+      if (!statusId || !Number.isFinite(n)) return false;
+      /* The page reads 0 when it has no like button to read, so a 0 never
+         replaces a count already known from X's data. */
+      if (n === 0 && posts.likes.has(statusId)) return false;
+      const fresh = !posts.likes.has(statusId);
+      posts.likes.set(statusId, n);
+      return fresh;
+    },
+
+    /* How popular the thread a reply sits in is: the like count of the post
+       that started it — or, failing that, of the post it answers. Null when
+       neither is known. */
+    threadLikes(statusId) {
+      const reply = posts.replies.get(statusId);
+      const conv = posts.convs.get(statusId) || (reply && reply.conv);
+      if (conv && conv !== statusId && posts.likes.has(conv)) return posts.likes.get(conv);
+      if (reply && reply.toId && posts.likes.has(reply.toId)) return posts.likes.get(reply.toId);
+      return null;
+    },
+
     recordPosts(items) {
       let changed = false;
       for (const item of items || []) {
         if (!item || !item.id) continue;
+        if (Number.isFinite(item.likes)) {
+          if (!posts.likes.has(item.id)) changed = true;
+          posts.likes.set(item.id, item.likes);
+        }
         /* The post that starts a thread has conversation_id_str === its own id,
            so seeing any such post teaches us who owns that conversation. */
         if (item.conv && item.author && item.conv === item.id) {
@@ -6553,6 +8081,7 @@ try {
         posts.quotes,
         posts.convs,
         posts.quoteAuthors,
+        posts.likes,
         posts.langs,
         posts.sources,
         posts.links,
@@ -6770,6 +8299,45 @@ try {
     }
   ];
 
+  /* Ahead of the two copy-detection rules: the near-duplicate rule has to
+     stay last in the list, as its own options sit just below the list. */
+  RULES.splice(RULES.findIndex((r) => r.id === "thread_dupe"), 0, {
+    id: "one_word_reply",
+    label: "One-word reply",
+    hint: "A reply that's a single word and nothing else — \"this\", \"W\", \"facts\", \"hey\", \"hi\". Weak on its own: plenty of real people reply that way too.",
+    weight: 1,
+    on: true,
+    test: (p, cfg, handle, extra) => !!(extra && extra.oneWord),
+    describe: (p, handle, extra) => (extra && extra.oneWord ? `one-word reply: "${extra.oneWord}"` : "")
+  });
+
+  /* The one word, if a post's text is exactly one word. Words are counted by
+     spaces, so "don't" and "re-tweet" are one word each — except in
+     languages written without spaces, where a whole sentence has none: there
+     the browser's word breaker decides, so 日本語の文です is a sentence and
+     真的 is a word. Links and @mentions don't count as words; punctuation and
+     emoji around it are dropped. Null for anything else, empty text
+     included. */
+  let wordBreaker = null;
+  try {
+    wordBreaker = new Intl.Segmenter(undefined, { granularity: "word" });
+  } catch {}
+  const NO_SPACES = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+  function oneWord(text) {
+    const tokens = String(text || "")
+      .replace(/https?:\/\/\S+/g, " ")
+      .replace(/(^|\s)@\w+/g, " ")
+      .split(/\s+/)
+      .filter((t) => /[\p{L}\p{N}]/u.test(t));
+    if (tokens.length !== 1) return null;
+    const word = tokens[0].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    if (wordBreaker && NO_SPACES.test(word)) {
+      const parts = [...wordBreaker.segment(word)].filter((seg) => seg.isWordLike);
+      if (parts.length !== 1) return null;
+    }
+    return word || null;
+  }
+
   const BY_ID = new Map(RULES.map((r) => [r.id, r]));
 
   function configFor(id, settings) {
@@ -6818,7 +8386,7 @@ try {
     return { score: total, fired };
   }
 
-  const QUIET_OFF = new Set(["no_bio", "thread_dupe", "near_dupe"]);
+  const QUIET_OFF = new Set(["no_bio", "thread_dupe", "near_dupe", "one_word_reply"]);
   const QUIET_PARAMS = {
     new_account: { maxDays: 30 },
     matched_counts: { minCount: 1000, tolerance: 10 }
@@ -6843,6 +8411,7 @@ try {
     BY_ID,
     configFor,
     score,
+    oneWord,
     ageDays,
     postsPerDay,
     lifetimeRate,
@@ -8499,28 +10068,49 @@ try {
       .trim();
   }
 
-  /* Asking for a follow — "follow for more", "hit tweet follow me", "give me
-     a follow". The plug is the follow itself, so these count without a link.
-     Everything else in this rule needs a link: an author's ordinary reply
-     under their own post shouldn't be caught for wording alone.
+  /* Asking for engagement under your own post — a follow ("follow for more",
+     "hit tweet follow me", "give me a follow") or a like, repost or share
+     ("please like this post", "like and retweet", "repost this"). The ask is
+     the plug, so these count without a link. Everything else in this rule
+     needs a link: an author's ordinary reply under their own post shouldn't
+     be caught for wording alone, and a celebration on its own — "omg a hit
+     tweet!" — asks for nothing.
 
-     "Follow me" has an ordinary sense too — "people who follow me know",
-     "if you follow me you'll know" — so it doesn't count straight after a
-     word that makes it that sense. */
-  const FOLLOW_PLUG = new RegExp(
+     Several of these have an everyday sense too — "people who follow me
+     know", "I like this post", "would you like this post", "didn't mean to
+     repost this" — so they don't count straight after a word that makes them
+     that sense. */
+  const NOT_AN_ASK = "(?<!\\b(i|you|u|we|they|who|that|to|not|don'?t|dont|didn'?t|didnt|would|people|ppl) )";
+
+  const ASK_PLUG = new RegExp(
     [
+      /* follows */
       "\\bfollow (me )?for (more|part \\d+|daily|updates|the rest)\\b",
-      "(?<!\\b(you|u|who|that|they|to|not|don'?t|dont|people|ppl) )\\bfollow me\\b",
+      NOT_AN_ASK + "\\bfollow me\\b",
       "\\bgive (me )?a follow\\b",
-      "\\bgo follow (me|my)\\b"
+      "\\bgo follow (me|my)\\b",
+      /* likes */
+      "\\bplease like\\b",
+      NOT_AN_ASK + "\\blike this (post|tweet)\\b",
+      "\\blike and (retweet|rt|repost|share|subscribe|follow)\\b",
+      "\\b(give|drop|leave) (this|it|me) a like\\b",
+      "\\b(drop|leave) a like\\b",
+      "\\bsmash (that|the) like\\b",
+      /* reposts and shares */
+      "\\bplease (retweet|rt|repost|share)\\b",
+      NOT_AN_ASK + "\\b(retweet|rt|repost|share) this\\b"
     ].join("|"),
     "i"
   );
 
-  MEDX.followPlug = (text) => {
+  /* Whether a reply reads as context — "source:", "update:", "original
+     post:" — which this rule always leaves alone. */
+  MEDX.readsAsContext = (text) => CONTEXT.test(wordsOnly(text));
+
+  MEDX.askPlug = (text) => {
     const words = wordsOnly(text);
     if (CONTEXT.test(words)) return null;
-    const m = FOLLOW_PLUG.exec(words);
+    const m = ASK_PLUG.exec(words);
     return m ? { why: m[0].toLowerCase() } : null;
   };
 
@@ -8920,6 +10510,7 @@ try {
       delete cell.dataset.medxRevealed;
       delete cell.dataset.medxRevealedLabel;
       delete cell.dataset.medxHidden;
+      delete cell.dataset.medxPeekable;
       delete cell.dataset.medxLabel;
       delete cell.dataset.medxId;
       delete cell.dataset.medxHandle;
@@ -9370,9 +10961,51 @@ try {
      cannot be known to be an original until the copy turns up. */
   const copiedPosts = new Set();
 
+  /* The thread's author plugging something in the reply directly under their
+     own post — "this blew up, anyway check out my shop". Only that one slot:
+     the first post itself is never touched, and their replies further down
+     are usually real conversation. Context replies ("source:", "full video
+     here") are left alone; see MEDX.selfPromo.
+
+     Its own function because decide asks twice: in its place among the other
+     rules, and before a reply is kept for the poster having answered it. */
+  function selfPlug(meta, s) {
+    const annoy = s.annoyances;
+    if (!annoy.selfPromo || !meta.handle || annoy.allowed.includes(meta.handle)) return null;
+    if (!posts.opTopLevel(meta.id, meta.handle)) return null;
+
+    /* Quoting another of their own posts — "this blew up, check out my
+       other one" with the post quoted rather than linked. Not quoting
+       someone else, not quoting this thread's own first post (pointless as a
+       plug, more likely an edit), and not when it reads as context. The
+       quoted author comes from X's own data, with the card's handle as a
+       fallback. */
+    const quoted = posts.quotedBy(meta.id);
+    const quotedAuthor = quoted && (posts.quoteAuthor(quoted) || meta.quoteHandle);
+    const thread = (posts.replies.get(meta.id) || {}).conv;
+    const selfQuote =
+      !!quoted &&
+      !!quotedAuthor &&
+      quotedAuthor.toLowerCase() === meta.handle.toLowerCase() &&
+      quoted !== thread &&
+      !MEDX.readsAsContext(meta.text);
+
+    /* Otherwise: with a link, any plug wording; without one, only asking
+       for engagement — a follow, like, repost or share — where the ask
+       itself is the plug. */
+    const plug = selfQuote
+      ? { why: "quoting their own post" }
+      : posts.linksOf(meta.id).length
+        ? MEDX.selfPromo(meta.text, posts.linksOf(meta.id))
+        : MEDX.askPlug(meta.text);
+    return plug ? { reason: "selfpromo", why: plug.why, lang: null } : null;
+  }
+
   function decide(meta) {
     nearDupeTrace = null;
     const s = store.settings;
+    /* Its like count, as the page shows it, for the replies under it. */
+    if (meta.hasMetrics && meta.id) posts.noteLikes(meta.id, meta.likes);
 
     /* Two exemptions ahead of everything else: accounts you follow, and
        accounts on the global list. Deliberately before every other check
@@ -9402,6 +11035,16 @@ try {
         /^\/[^/]+\/status\//.test(window.location.pathname) &&
         posts.answeredByAuthor(meta.id)
       ) {
+        /* Unless it's the thread's author plugging themselves. Adding a line
+           of text under their own plug is them answering it, and that kept on
+           screen the one reply the plug rule is there for: nobody was being
+           welcomed into the conversation, it's the same person twice. The
+           plug rule's own exemptions still hold, and so does the list of
+           accounts never hidden anywhere. */
+        if (!s.allowedEverywhere.includes(meta.handle)) {
+          const plug = selfPlug(meta, s);
+          if (plug) return plug;
+        }
         return { exemptOnly: "answered" };
       }
 
@@ -9563,6 +11206,15 @@ try {
         }
 
         if (s.verified.repliesOnly && !posts.isReply(meta.id)) hide = false;
+
+        /* Only in popular threads: a blue reply under a post with fewer likes
+           than the threshold — or one whose likes aren't known yet — stays.
+           On a small post a verified reply is more likely a conversation;
+           it's the big ones the reply guys pile onto. */
+        if (hide && s.verified.likesThreshold && posts.isReply(meta.id)) {
+          const likes = posts.threadLikes(meta.id);
+          if (likes === null || likes < (Number(s.verified.minThreadLikes) || 0)) hide = false;
+        }
       }
 
       if (hide) return { reason: "verified", badge, lang: null };
@@ -9592,10 +11244,11 @@ try {
          catching them here would mean this option silently overrode them. */
       if (info && !info.blue && !info.type) {
         let hide = true;
-        if (s.verified.allowSelfReplies && posts.inOwnThread(meta.id, meta.handle)) {
+        /* This rule's own exemptions, separate from the blue checkmark rule's. */
+        if (s.verified.unverifiedAllowSelf && posts.inOwnThread(meta.id, meta.handle)) {
           hide = false;
         }
-        if (s.verified.allowFollowedReplies && verified.isFollowing(meta.handle)) {
+        if (s.verified.unverifiedAllowFollowed && verified.isFollowing(meta.handle)) {
           hide = false;
         }
         if (hide) return { reason: "unverified", lang: null };
@@ -9648,6 +11301,13 @@ try {
             break;
           }
         }
+      }
+
+      /* A reply that's one word and nothing more — no picture, video or
+         quoted post alongside it, which would make it more than one word. */
+      if (signals.configFor("one_word_reply", s).on && posts.isReply(meta.id) && !meta.hasMedia && !meta.hasQuote && !meta.hasQuoteCard) {
+        const word = signals.oneWord(meta.text);
+        if (word) extra.oneWord = word;
       }
 
       const nearCfg = signals.configFor("near_dupe", s);
@@ -9751,19 +11411,9 @@ try {
       }
     }
 
-    /* The thread's author plugging something in the reply directly under their
-       own post — "this blew up, anyway check out my shop". Only that one slot:
-       the first post itself is never touched, and their replies further down
-       are usually real conversation. Context replies ("source:", "full video
-       here") are left alone; see MEDX.selfPromo. */
-    if (annoy && annoy.selfPromo && posts.opTopLevel(meta.id, meta.handle)) {
-      /* With a link, any plug wording; without one, only asking for a follow,
-         where the follow itself is the plug. */
-      const plug = posts.linksOf(meta.id).length
-        ? MEDX.selfPromo(meta.text, posts.linksOf(meta.id))
-        : MEDX.followPlug(meta.text);
-      if (plug) return { reason: "selfpromo", why: plug.why, lang: null };
-    }
+    /* The thread's author plugging themselves: see selfPlug. */
+    const plug = selfPlug(meta, s);
+    if (plug) return plug;
 
     /* A country written out in the display name, rather than as a flag. */
     if (
@@ -10482,6 +12132,9 @@ try {
       meta.id +
       "|" +
       (mode ? "m:" + mode + "|" : "") +
+      /* Whether it's the thread's own post changes with the address, not the
+         post, so it's part of the key — or the peek mark would go stale. */
+      (mode === "remove" && threadAnchor(meta.id) ? "anchor|" : "") +
       (watchTerm ? "w:" + watchTerm.id : "") +
       (shown ? "shown:" : "") +
       (decision
@@ -10523,7 +12176,27 @@ try {
 
     if (!decision) render.clear(cell);
     else if (shown) render.markRevealed(cell, decision, meta);
-    else render.collapse(cell, decision, meta);
+    else {
+      render.collapse(cell, decision, meta);
+      /* A thread's own post, removed outright, can still be peeked at with
+         Alt — everywhere else, removed means removed. See threadAnchor. */
+      if (threadAnchor(meta.id)) cell.dataset.medxPeekable = "1";
+      else delete cell.dataset.medxPeekable;
+    }
+  }
+
+  /* Whether a post is what a thread page is about: the post in the address
+     bar, or — when that's a reply partway down — the post that started the
+     conversation. Opening a thread whose main post had been removed left
+     nothing at the top to read, with no way to see it short of changing a
+     setting; holding Alt now shows it. */
+  function threadAnchor(id) {
+    if (!id) return false;
+    const m = /\/status\/(\d+)/.exec(window.location.pathname);
+    if (!m) return false;
+    if (id === m[1]) return true;
+    const info = posts.replies.get(m[1]);
+    return !!(info && info.conv && info.conv === id);
   }
 
   /* Rebuilt rather than maintained: a Range whose node React recycled is
@@ -10914,19 +12587,30 @@ try {
      than synced settings allow. Read once and then whenever it changes, so
      choosing a new one takes effect without a reload. */
   const BG_IMAGE_KEY = "medxBackgroundImage";
+  /* A second picture, for a pair either side of the timeline. */
+  const BG_IMAGE_KEY_2 = "medxBackgroundImage2";
   let backgroundImage = null;
+  let backgroundImage2 = null;
 
   try {
-    chrome.storage.local.get(BG_IMAGE_KEY).then((got) => {
+    chrome.storage.local.get([BG_IMAGE_KEY, BG_IMAGE_KEY_2]).then((got) => {
       backgroundImage = got[BG_IMAGE_KEY] || null;
+      backgroundImage2 = got[BG_IMAGE_KEY_2] || null;
       measureBackground(backgroundImage);
+      measureSecond(backgroundImage2);
       if (store.ready) applyBackground(true);
     });
 
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== "local" || !changes[BG_IMAGE_KEY]) return;
-      backgroundImage = changes[BG_IMAGE_KEY].newValue || null;
-      measureBackground(backgroundImage);
+      if (area !== "local" || (!changes[BG_IMAGE_KEY] && !changes[BG_IMAGE_KEY_2])) return;
+      if (changes[BG_IMAGE_KEY]) {
+        backgroundImage = changes[BG_IMAGE_KEY].newValue || null;
+        measureBackground(backgroundImage);
+      }
+      if (changes[BG_IMAGE_KEY_2]) {
+        backgroundImage2 = changes[BG_IMAGE_KEY_2].newValue || null;
+        measureSecond(backgroundImage2);
+      }
       if (store.ready) applyBackground(true);
     });
   } catch {}
@@ -10962,10 +12646,135 @@ try {
     img.src = data;
   }
 
+  /* The second picture's proportions, for sizing its own dim layer. */
+  let backgroundAspect2 = null;
+
+  function measureSecond(data) {
+    backgroundAspect2 = null;
+    if (!data || isVideoData(data)) return;
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth && img.naturalHeight) {
+        backgroundAspect2 = img.naturalWidth / img.naturalHeight;
+        if (store.ready) applyBackground();
+      }
+    };
+    img.src = data;
+  }
+
+  /* A dim layer's size: exactly the picture it darkens, worked out from the
+     picture's fit, size and proportions the way the browser lays it out. The
+     layer is a plain colour with no proportions of its own, so it gets the
+     picture's size in pixels, and the picture's anchor, which puts it in the
+     same place. A tiled picture covers the whole screen, so its layer does.
+     Until the picture is measured, nothing is drawn — rather than dimming the
+     whole screen for a moment. */
+  function dimLayerSize(fit, scale, aspect) {
+    if (fit === "tile") return "100% 100%";
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    if (!aspect || !W || !H) return "0px 0px";
+    const wider = aspect > W / H;
+    /* "cover" is bound by the narrower edge, "contain" by the wider one. */
+    const byWidth = fit === "contain" ? wider : !wider;
+    let w = byWidth ? W : aspect * H;
+    let h = byWidth ? W / aspect : H;
+    w *= scale / 100;
+    h *= scale / 100;
+    return w.toFixed(3) + "px " + h.toFixed(3) + "px";
+  }
+
+  /* ---------- mirroring ---------- */
+
+  /* A still picture, mirrored, drawn once onto a canvas and kept. CSS can't
+     flip a background, so the flipped picture is made instead; the original
+     stays as uploaded, so turning mirroring off is instant. Worked out off to
+     the side: until it's ready the picture shows unmirrored, then the page is
+     redrawn with it. An animated picture is left as it is — redrawing keeps
+     only its first frame — and so is a video, which is flipped as it plays. */
+  const mirrorSlots = {};
+
+  function isAnimatedData(data) {
+    const m = /^data:(image\/[a-z+]+);base64,/.exec(data || "");
+    if (!m || !/gif|webp|png|apng/.test(m[1])) return false;
+    try {
+      const bin = atob(data.slice(m[0].length));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return MEDX.isAnimatedImage(bytes, m[1]);
+    } catch {
+      return false;
+    }
+  }
+
+  function mirroredPicture(slot, data, mx, my) {
+    if (!data || (!mx && !my) || isVideoData(data)) return data;
+    const key = data.length + ":" + data.slice(-48) + ":" + (mx ? 1 : 0) + (my ? 1 : 0);
+    const held = mirrorSlots[slot];
+    if (held && held.key === key) return held.out || data;
+    mirrorSlots[slot] = { key, out: null };
+
+    if (isAnimatedData(data)) {
+      mirrorSlots[slot].out = data;
+      return data;
+    }
+    const img = new Image();
+    img.onload = () => {
+      if (!mirrorSlots[slot] || mirrorSlots[slot].key !== key) return; // superseded
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx || !w || !h) {
+        mirrorSlots[slot].out = data;
+        return;
+      }
+      ctx.translate(mx ? w : 0, my ? h : 0);
+      ctx.scale(mx ? -1 : 1, my ? -1 : 1);
+      ctx.drawImage(img, 0, 0);
+      /* A photo stays a JPEG; anything else becomes a PNG, which keeps
+         transparency. */
+      mirrorSlots[slot].out = /^data:image\/jpeg/.test(data)
+        ? canvas.toDataURL("image/jpeg", 0.92)
+        : canvas.toDataURL("image/png");
+      if (store.ready) applyBackground(true);
+    };
+    img.src = data;
+    return data;
+  }
+
+  /* An anchor with a shift from it, as a background position. Each edge
+     becomes its percentage — which CSS reads as "this point of the picture on
+     this point of the window", exactly as the keyword does — plus the shift
+     in pixels. With no shift, the anchor is left as it was. */
+  function offsetPosition(position, dx, dy) {
+    const [h, v] = fullPosition(position).split(" ");
+    if (!dx && !dy) return h + " " + v;
+    const pct = (t, lo, hi) => (t === lo ? "0%" : t === hi ? "100%" : t === "center" ? "50%" : t);
+    const plus = (n) => (n < 0 ? "- " + Math.abs(n) : "+ " + (n || 0)) + "px";
+    return `calc(${pct(h, "left", "right")} ${plus(dx)}) calc(${pct(v, "top", "bottom")} ${plus(dy)})`;
+  }
+
+  /* An anchor as a full position. Corners name both edges ("left top"); the
+     others name one and are centred on the other axis. */
+  function fullPosition(position) {
+    const p = position || "center";
+    if (p.includes(" ")) return p;
+    if (p === "top" || p === "bottom") return "center " + p;
+    return p + " center";
+  }
+
   /* What background-size should be, with the scale applied. */
   function backgroundSize(s) {
-    const scale = s.backgroundScale || 100;
-    const fit = s.backgroundFit;
+    return backgroundSizeFor(s.backgroundFit, s.backgroundScale || 100, backgroundAspect);
+  }
+
+  /* The same for any picture: its fit, size and proportions. The first
+     picture's sizing, unchanged, made available to the second. */
+  function backgroundSizeFor(fit, scale, aspect) {
+    const backgroundAspect = aspect;
 
     if (scale === 100) return fit === "tile" ? "auto" : fit;
     if (!backgroundAspect) return scale + "% auto"; // not measured yet
@@ -10998,17 +12807,24 @@ try {
      text around to change a colour. Rewritten only when the image changes. */
   let bgImageStyle = null;
   let bgImageStyled = null;
+  let bgImageStyled2 = null;
 
-  function styleBackgroundImage(data) {
-    if (data === bgImageStyled) return;
+  function styleBackgroundImage(data, data2) {
+    /* Compared by reference, each on its own. Building a combined key by
+       joining the two data URLs copied up to nine megabytes of text on every
+       scan, just to find out nothing had changed. */
+    if (data === bgImageStyled && data2 === bgImageStyled2) return;
     bgImageStyled = data;
+    bgImageStyled2 = data2;
     if (!bgImageStyle) {
       bgImageStyle = document.createElement("style");
       bgImageStyle.dataset.medx = "background-image";
       document.documentElement.appendChild(bgImageStyle);
     }
     bgImageStyle.textContent = data
-      ? 'html { --medx-bg-image: url("' + data + '"); }'
+      ? 'html { --medx-bg-image: url("' + data + '");' +
+        (data2 ? ' --medx-bg-image2: url("' + data2 + '");' : "") +
+        " }"
       : "";
   }
 
@@ -11081,17 +12897,64 @@ try {
     /* The same fit, anchor and size as a picture, in video terms. There is no
        tiling a video, so "tile" plays it at its own size instead. */
     const fit = s.backgroundFit === "contain" ? "contain" : s.backgroundFit === "tile" ? "none" : "cover";
-    const position = s.backgroundPosition || "center";
-    const anchor = position.includes(" ") ? position : position + " center";
+    const anchor = fullPosition(s.backgroundPosition || "center");
     const scale = (s.backgroundScale || 100) / 100;
-    Object.assign(backgroundVideo.style, {
-      objectFit: fit,
-      objectPosition: anchor,
-      transform: scale === 1 ? "" : `scale(${scale})`,
-      transformOrigin: anchor
-    });
+    const mx = !!s.backgroundMirrorX;
+    const my = !!s.backgroundMirrorY;
+    Object.assign(
+      backgroundVideo.style,
+      videoPlacement(anchor, scale, mx, my, fit, s.backgroundOffsetX || 0, s.backgroundOffsetY || 0)
+    );
 
     playOrHold();
+  }
+
+  /* Where a video sits, as styles: its fit and anchor, its size, and any
+     mirroring. Flipping the layer alone would swing it across the screen — a
+     video anchored left would land on the right — so the video is placed at
+     the mirror image of its anchor, flipped about the middle of the screen,
+     which brings it back where it belongs, flipped; then sized about its
+     anchor, as before. All three in one transform, measured from the
+     top-left corner:
+
+       x' = s·f·x + Ax + s·(Cx − f·Cx − Ax)
+
+     where s is the size, f is −1 when mirrored, A the anchor and C the middle
+     of the screen, in pixels; likewise for y. */
+  function videoPlacement(anchor, scale, mx, my, fit, ox = 0, oy = 0) {
+    /* A shift from the anchor is one more move, after the sizing — so it's in
+       screen pixels whatever the size. */
+    if (!mx && !my) {
+      const parts = [];
+      if (ox || oy) parts.push(`translate(${ox}px, ${oy}px)`);
+      if (scale !== 1) parts.push(`scale(${scale})`);
+      return {
+        objectFit: fit,
+        objectPosition: anchor,
+        transform: parts.join(" "),
+        transformOrigin: anchor
+      };
+    }
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const [h, v] = anchor.split(" ");
+    const px = (token, size, lo, hi) =>
+      token === lo ? 0 : token === hi ? size : token === "center" ? size / 2 : (parseFloat(token) / 100) * size;
+    const flip = (token, lo, hi) =>
+      token === lo ? hi : token === hi ? lo : token.endsWith("%") ? 100 - parseFloat(token) + "%" : token;
+    const ax = px(h, W, "left", "right");
+    const ay = px(v, H, "top", "bottom");
+    const fx = mx ? -1 : 1;
+    const fy = my ? -1 : 1;
+    const tx = ax + scale * (W / 2 - fx * (W / 2) - ax) + ox;
+    const ty = ay + scale * (H / 2 - fy * (H / 2) - ay) + oy;
+    const round = (n) => Math.round(n * 1000) / 1000;
+    return {
+      objectFit: fit,
+      objectPosition: (mx ? flip(h, "left", "right") : h) + " " + (my ? flip(v, "top", "bottom") : v),
+      transform: `translate(${round(tx)}px, ${round(ty)}px) scale(${round(scale * fx)}, ${round(scale * fy)})`,
+      transformOrigin: "0 0"
+    };
   }
 
   function applyBackgroundImage(root) {
@@ -11111,8 +12974,37 @@ try {
     /* A video is played rather than painted: the stylesheet gets no image,
        and the panels still go see-through through the same marker. */
     const video = isVideoData(backgroundImage);
-    styleBackgroundImage(video ? null : backgroundImage);
+    /* Two pictures: one pinned to each side, the timeline between them. Not
+       with a video — it plays as a full-screen layer and can't share — so a
+       second picture is ignored then, and the options page says so. */
+    const pair = !video && !!backgroundImage2 && !isVideoData(backgroundImage2);
+    styleBackgroundImage(
+      video ? null : mirroredPicture(1, backgroundImage, s.backgroundMirrorX, s.backgroundMirrorY),
+      pair ? mirroredPicture(2, backgroundImage2, s.backgroundMirrorX2, s.backgroundMirrorY2) : null
+    );
     applyBackgroundVideo(video ? backgroundImage : null, s);
+
+    if (pair) {
+      /* Two independent pictures. The first is drawn exactly as it is alone —
+         its fit, anchor and size — so adding a second changes nothing about
+         it; the second has its own of each. They used to be pinned one left
+         and one right, which overrode the first picture's own anchor and fit
+         the moment a second appeared. */
+      const fit2 = s.backgroundFit2 || "contain";
+      const scale1 = s.backgroundScale || 100;
+      const scale2 = s.backgroundScale2 || 100;
+      setVar(root, "--medx-bg-fit2", backgroundSizeFor(fit2, scale2, backgroundAspect2));
+      setVar(root, "--medx-bg-position2",
+        offsetPosition(s.backgroundPosition2 || "left", s.backgroundOffsetX2 || 0, s.backgroundOffsetY2 || 0));
+      setVar(root, "--medx-bg-repeat1", s.backgroundFit === "tile" ? "repeat" : "no-repeat");
+      setVar(root, "--medx-bg-repeat2", fit2 === "tile" ? "repeat" : "no-repeat");
+      /* Each dimmed by a dark layer laid exactly over it — the one veil over
+         the whole page could only dim both at once, and the colour between. */
+      setVar(root, "--medx-bg-dim1", String((s.backgroundDim || 0) / 100));
+      setVar(root, "--medx-bg-dim2", String((s.backgroundDim2 || 0) / 100));
+      setVar(root, "--medx-bg-dimsize1", dimLayerSize(s.backgroundFit, scale1, backgroundAspect));
+      setVar(root, "--medx-bg-dimsize2", dimLayerSize(fit2, scale2, backgroundAspect2));
+    }
     /* The scale multiplies the fitted size rather than replacing it. Read as a
        share of the window it jumped: for a portrait picture, "contain" is far
        narrower than the window, so stepping from 100 to 80 made it bigger, not
@@ -11122,10 +13014,10 @@ try {
     /* A corner names both edges ("left top"); the older values name only the
        horizontal one and are centred vertically. */
     const position = s.backgroundPosition || "center";
-    setVar(root, "--medx-bg-position", position.includes(" ") ? position : position + " center");
+    setVar(root, "--medx-bg-position", offsetPosition(position, s.backgroundOffsetX || 0, s.backgroundOffsetY || 0));
     /* A dark veil over the picture, so text stays readable on a busy one. */
     setVar(root, "--medx-bg-dim", String((s.backgroundDim || 0) / 100));
-    const mode = video ? "video" : s.backgroundFit === "tile" ? "tile" : "fit";
+    const mode = video ? "video" : pair ? "pair" : s.backgroundFit === "tile" ? "tile" : "fit";
     if (root.dataset.medxBgImage !== mode) root.dataset.medxBgImage = mode;
     return true;
   }
@@ -11341,16 +13233,31 @@ try {
      is put back exactly as it was. */
   let pageOverflowBefore = null;
 
+  /* Holding X still behind the open settings: no scrolling — but with the
+     scrollbar's space kept. Hiding the scrollbar widened the page by its
+     width, and everything placed against the window's width moved: X's
+     centered layout by half a scrollbar, a background picture anchored right
+     by a whole one. So something lined up with the settings open shifted when
+     they closed. scrollbar-gutter: stable keeps the space while the page can't
+     scroll, so the page is exactly as wide as ever. What X had is put back on
+     closing. */
+  let pageGutterBefore = null;
   function lockPage() {
     if (pageOverflowBefore !== null) return;
-    pageOverflowBefore = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = "hidden";
+    const html = document.documentElement;
+    pageOverflowBefore = html.style.overflow;
+    pageGutterBefore = html.style.scrollbarGutter;
+    html.style.scrollbarGutter = "stable";
+    html.style.overflow = "hidden";
   }
 
   function unlockPage() {
     if (pageOverflowBefore === null) return;
-    document.documentElement.style.overflow = pageOverflowBefore;
+    const html = document.documentElement;
+    html.style.overflow = pageOverflowBefore;
+    html.style.scrollbarGutter = pageGutterBefore || "";
     pageOverflowBefore = null;
+    pageGutterBefore = null;
   }
 
   function closeSettings() {
@@ -11360,13 +13267,129 @@ try {
     unlockPage();
   }
 
+  /* Dragging the pop-up by its grip. Drags are followed on the window, and
+     the frame ignores the pointer while one is under way: otherwise the frame
+     takes the pointer's movements as soon as it passes over it, and the page
+     never sees them, so the drag stalls. It can go anywhere so long as some
+     of the grip stays on screen to grab again, and double-clicking the grip
+     puts it back in the middle.
+
+     Where it was left is kept only until the page reloads: closed and
+     reopened it's where it was, but come back later and it's centred again,
+     rather than found tucked in a corner hours on. Earlier builds kept it for
+     good, so what they saved is cleared. */
+  const GRIP_ON_SCREEN = 120; // px of the grip that must stay reachable
+  const dragOffsets = {};
+  try {
+    window.localStorage.removeItem("medx-popup-offset");
+  } catch {}
+
+  /* A tooltip for the grip, in the settings' own style. The browser's
+     built-in one can't be styled at all, so it's replaced: shown after a
+     short pause, as a tooltip would be, and gone on leaving or on starting a
+     drag. */
+  function attachGripTip(grip, text) {
+    grip.removeAttribute("title");
+    const tip = document.createElement("span");
+    tip.className = "medx-grip-tip";
+    tip.textContent = text;
+    tip.setAttribute("role", "tooltip");
+    grip.appendChild(tip);
+    let timer = null;
+    const hide = () => {
+      clearTimeout(timer);
+      tip.classList.remove("shown");
+    };
+    grip.addEventListener("mouseenter", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => tip.classList.add("shown"), 500);
+    });
+    grip.addEventListener("mouseleave", hide);
+    grip.addEventListener("pointerdown", hide);
+    grip.addEventListener("dblclick", hide);
+  }
+
+  function makeDraggable(mover, grip, frame, storageKey) {
+    let offset = dragOffsets[storageKey] || { x: 0, y: 0 };
+
+    const show = () => {
+      mover.style.transform = offset.x || offset.y ? `translate(${offset.x}px, ${offset.y}px)` : "";
+    };
+    const remember = () => {
+      dragOffsets[storageKey] = offset;
+    };
+
+    /* Kept so the grip stays reachable: measured from where the grip would sit
+       with no offset at all. */
+    const limit = (wanted) => {
+      const r = grip.getBoundingClientRect();
+      /* Not laid out yet — hidden, or measured too soon — and there's nothing to
+         measure against: a zero-size grip would read as off-screen and shove the
+         pop-up aside. Leave it as it is until there's a real size. */
+      if (!r.width || !r.height) return { x: Math.round(wanted.x), y: Math.round(wanted.y) };
+      const left0 = r.left - offset.x;
+      const top0 = r.top - offset.y;
+      const minX = GRIP_ON_SCREEN - (left0 + r.width);
+      const maxX = window.innerWidth - GRIP_ON_SCREEN - left0;
+      const minY = -top0;
+      const maxY = window.innerHeight - r.height - top0;
+      return {
+        x: Math.round(Math.min(maxX, Math.max(minX, wanted.x))),
+        y: Math.round(Math.min(maxY, Math.max(minY, wanted.y)))
+      };
+    };
+
+    show();
+    /* Kept on screen if the window is smaller now than when it was moved. */
+    requestAnimationFrame(() => {
+      offset = limit(offset);
+      show();
+    });
+
+    grip.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const start = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+      frame.style.pointerEvents = "none";
+      mover.classList.add("dragging");
+      const move = (ev) => {
+        offset = limit({ x: start.ox + ev.clientX - start.x, y: start.oy + ev.clientY - start.y });
+        show();
+      };
+      const end = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
+        frame.style.pointerEvents = "";
+        mover.classList.remove("dragging");
+        remember();
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+    });
+
+    grip.addEventListener("dblclick", () => {
+      offset = { x: 0, y: 0 };
+      show();
+      remember();
+    });
+  }
+
   function openSettingsFrame() {
     if (settingsOverlay) return;
     settingsOverlay = document.createElement("div");
     settingsOverlay.id = "medx-settings-overlay";
 
     const frame = document.createElement("iframe");
-    frame.src = chrome.runtime.getURL("options/options.html");
+    /* ?popup tells the page it's the pop-up, alongside its own check for
+       being in a frame — see options.js. */
+    frame.src =
+      chrome.runtime.getURL("options/options.html") +
+      "?popup" +
+      (popupScroll
+        ? "&tab=" + encodeURIComponent(popupScroll.tab) + "&scrollY=" + popupScroll.y
+        : "");
     frame.title = "MED-X settings";
     frame.setAttribute("allow", "clipboard-write");
 
@@ -11383,7 +13406,35 @@ try {
     const box = document.createElement("div");
     box.className = "medx-settings-box";
     box.appendChild(frame);
-    settingsOverlay.append(box, close);
+
+    /* The grip, above the frame, and everything that moves with it. */
+    const grip = document.createElement("div");
+    grip.className = "medx-settings-grip";
+    grip.setAttribute("aria-hidden", "true");
+    const mover = document.createElement("div");
+    mover.className = "medx-settings-move";
+    /* Laid over the top of the frame, on the bar the settings page draws
+       there — see options.css. */
+    /* Click through: the pop-up fades and lets clicks fall to X underneath —
+       backdrop cleared, page free to scroll — while this button, Close and
+       the grip stay solid and in reach. For a quick look at the page, so
+       every opening starts without it. */
+    const through = document.createElement("button");
+    through.type = "button";
+    through.className = "medx-settings-through";
+    through.textContent = "Click through";
+    through.setAttribute("aria-pressed", "false");
+    through.addEventListener("click", () => {
+      const on = !settingsOverlay.classList.contains("click-through");
+      settingsOverlay.classList.toggle("click-through", on);
+      through.setAttribute("aria-pressed", on ? "true" : "false");
+      if (on) unlockPage();
+      else lockPage();
+    });
+    mover.append(box, grip, close, through);
+    settingsOverlay.append(mover);
+    makeDraggable(mover, grip, frame, "medx-popup-offset");
+    attachGripTip(grip, "Drag to move — double-click to center");
     /* Fresh each time it opens, so it never shows settings changed elsewhere
        since it was last open. */
     settingsOverlay.addEventListener("click", (e) => {
@@ -11393,10 +13444,21 @@ try {
     lockPage();
   }
 
+  /* Which tab the settings pop-up was on and where it was scrolled to, kept
+     here for it while the page lasts. Each opening is a fresh settings page,
+     so it can't keep them itself; it reports them as they change, and gets
+     them back when it next opens. Kept only until the page reloads — come
+     back later and it starts on the first tab, at the top. */
+  let popupScroll = null;
+
   window.addEventListener("message", (e) => {
-    if (!settingsOverlay || !e.data || e.data.medx !== "close-settings") return;
+    if (!settingsOverlay || !e.data) return;
     const frame = settingsOverlay.querySelector("iframe");
-    if (frame && e.source === frame.contentWindow) closeSettings();
+    if (!frame || e.source !== frame.contentWindow) return;
+    if (e.data.medx === "close-settings") closeSettings();
+    else if (e.data.medx === "popup-scroll" && typeof e.data.tab === "string" && Number.isFinite(e.data.y)) {
+      popupScroll = { tab: e.data.tab, y: Math.max(0, Math.round(e.data.y)) };
+    }
   });
 
   document.addEventListener("keydown", (e) => {
@@ -11453,6 +13515,38 @@ try {
     "AppTabBar_Home_Link"
   ];
 
+  /* The changelog's green dot, on the sidebar button, while anything in it is
+     newer than what was last marked as seen — so an update is noticed from the
+     timeline, not only by opening the settings. Marking all as seen there
+     clears it on the next pass. The dot sits on the icon, where X puts its own
+     badges; its holder is given a position only if it has none, so nothing
+     about how X lays it out is changed. */
+  function markUnseen(button) {
+    const unseen = MEDX.unseenChanges(store.settings.changelogSeen, store.settings.changelogSeenItems).length > 0;
+    const icon = button.querySelector(".medx-nav-icon");
+    const holder = icon && icon.parentElement;
+    if (holder && !holder.classList.contains("medx-nav-icon-holder")) {
+      holder.classList.add("medx-nav-icon-holder");
+      if (getComputedStyle(holder).position === "static") holder.style.position = "relative";
+    }
+    if (unseen) {
+      if (!button.dataset.medxUnseen) button.dataset.medxUnseen = "1";
+      /* The ring is the colour behind the button: X's own background — black,
+         dim blue or white — or, if MED-X has made it see-through for a chosen
+         background, that chosen colour. */
+      const pageBg = getComputedStyle(document.body).backgroundColor;
+      const seeThrough = !pageBg || pageBg === "transparent" || /rgba\([^)]*,\s*0\)$/.test(pageBg);
+      const ring = seeThrough ? store.settings.timelineBackground || "#000" : pageBg;
+      if (button.style.getPropertyValue("--medx-badge-ring") !== ring) {
+        button.style.setProperty("--medx-badge-ring", ring);
+      }
+      button.setAttribute("aria-label", "MED-X settings — see what's new");
+    } else if (button.dataset.medxUnseen) {
+      delete button.dataset.medxUnseen;
+      button.setAttribute("aria-label", "MED-X settings");
+    }
+  }
+
   function ensureSidebarButton() {
     const existing = document.querySelector("[data-medx-nav-button]");
     if (!store.settings.sidebarButton) {
@@ -11490,7 +13584,10 @@ try {
       pill ? pill.childElementCount : 0,
       model.textContent.trim() ? "label" : "icon-only"
     ].join("|");
-    if (existing && nav.contains(existing) && existing.dataset.medxShape === shape) return;
+    if (existing && nav.contains(existing) && existing.dataset.medxShape === shape) {
+      markUnseen(existing);
+      return;
+    }
     if (existing) existing.remove();
 
     const button = model.cloneNode(true);
@@ -11538,9 +13635,13 @@ try {
       if (e.key === "Enter" || e.key === " ") run(e);
     });
 
+    /* Below More, after all of X's own items. Placed above it, the button
+       pushed everything from there up a slot, Profile included — and people
+       reach for those by position. */
     const more = nav.querySelector('[data-testid="AppTabBar_More_Menu"]');
-    if (more && more.parentElement === model.parentElement) more.before(button);
+    if (more && more.parentElement === model.parentElement) more.after(button);
     else model.parentElement.appendChild(button);
+    markUnseen(button);
 
     setVar(
       document.documentElement,
@@ -11549,9 +13650,613 @@ try {
     );
   }
 
+  /* ---------- the menu at the window's left edge ---------- */
+
+  /* X holds its whole left menu — logo, items, Post, account — in a box
+     pinned with position: fixed but no coordinates of its own, so it sits
+     wherever the layout puts it: against the timeline, on a wide window. Given
+     a left of 0, it sits at the window's left edge instead. Being fixed, it's
+     out of the layout, so nothing else moves — the timeline, and any
+     centering, are untouched. The box is found once and marked; again only
+     if X redraws it. */
+  function applyMenuLeft() {
+    const root = document.documentElement;
+    const on = !!store.settings.menuLeft;
+    /* The menu's box is wanted for anchoring it, and for mirroring its
+       contents when the layout is flipped. */
+    const needed = on || !!store.settings.flipLayout;
+    if (!on && root.dataset.medxMenuLeft) delete root.dataset.medxMenuLeft;
+    if (!needed) {
+      for (const el of document.querySelectorAll("[data-medx-menu-pin]")) delete el.dataset.medxMenuPin;
+      return;
+    }
+    const header = document.querySelector('header[role="banner"]');
+    if (!header) return;
+    let pin = header.querySelector("[data-medx-menu-pin]");
+    if (!pin) {
+      pin = [...header.querySelectorAll("div")].find((el) => getComputedStyle(el).position === "fixed");
+      if (!pin) return;
+      pin.dataset.medxMenuPin = "1";
+    }
+    if (on && !root.dataset.medxMenuLeft) root.dataset.medxMenuLeft = "1";
+  }
+
+  /* ---------- flipping the layout ---------- */
+
+  /* X's layout is two rows of side-by-side items: the outer row holds the
+     menu and the main area, and the main area holds the timeline and the
+     search column. Reversing both puts them search · timeline · menu, a
+     mirror of X's own. The menu and search column are pinned with no
+     coordinates of their own, so they follow their columns.
+
+     On a wide window X's menu column stretches, and X lines the menu up at
+     its far end — against the timeline. Mirrored, the column is on the other
+     side of the timeline, so the menu is lined up at its near end instead,
+     and a margin on its left that's invisible in X's layout, but would open a
+     gap mirrored, is set aside.
+
+     The main area is the same the other way round: wider than the timeline
+     and search column on a wide window, X lines them up at its left end —
+     the menu's side, in X's layout. Mirrored, that's the window's edge, and
+     they drifted away from the menu, leaving a gap between the timeline and
+     it. So the layers between the main area and the timeline's row are
+     pushed to the main area's right end instead, against the menu. */
+  function applyLayoutFlip() {
+    const root = document.documentElement;
+    const on = !!store.settings.flipLayout;
+    const unmark = () => {
+      if (root.dataset.medxFlipped) delete root.dataset.medxFlipped;
+      for (const el of document.querySelectorAll("[data-medx-flip-row], [data-medx-flip-main], [data-medx-flip-push]")) {
+        delete el.dataset.medxFlipRow;
+        delete el.dataset.medxFlipMain;
+        delete el.dataset.medxFlipPush;
+      }
+    };
+    /* Off and never marked: nothing to walk the document for. */
+    if (!on) return root.dataset.medxFlipped ? unmark() : undefined;
+    const col = document.querySelector('[data-testid="primaryColumn"]');
+    const main = document.querySelector('main[role="main"]');
+    const header = document.querySelector('header[role="banner"]');
+    if (!col || !main || !header || !col.parentElement) return;
+    let row = main.parentElement;
+    while (row && !row.contains(header)) row = row.parentElement;
+    if (!row) return;
+    const inner = col.parentElement;
+    if (!main.contains(inner)) return;
+    if (!row.dataset.medxFlipRow || !inner.dataset.medxFlipMain || !inner.dataset.medxFlipPush) {
+      unmark();
+      row.dataset.medxFlipRow = "1";
+      inner.dataset.medxFlipMain = "1";
+      /* The timeline's row and each layer above it inside the main area. */
+      for (let el = inner; el && el !== main; el = el.parentElement) el.dataset.medxFlipPush = "1";
+    }
+    if (!root.dataset.medxFlipped) root.dataset.medxFlipped = "1";
+  }
+
+  /* ---------- centering the timeline ---------- */
+
+  /* X centers its layout as a whole — menu, timeline and search column — and
+     the menu is narrower than the search column, so the timeline sits left of
+     the window's middle. This moves all three over together by exactly the
+     amount that centers the timeline, by adding room on the left of the row
+     that holds them. X pins its menu and search column with position: fixed
+     but no coordinates of their own, so they follow; a transform would have
+     unpinned them, so none is used.
+
+     When there isn't room, the search column narrows to fit — never below a
+     usable width; past that, the timeline centers as nearly as it can.
+
+     Measured with the centering lifted, then put back in the same moment, so
+     nothing visibly moves; only when the window's width or the page changes,
+     or X redraws the row, not on every pass. Background pictures are painted
+     on the page itself, outside X's layout, so they don't move. */
+  const CENTER_EDGE = 10; // px kept clear at the window's right edge
+  const CENTER_MIN_SEARCH = 160; // px: the narrowest the search column goes
+  const CENTER_GAP = 20; // px: X's own gap between the timeline and the search column
+  let centerKey = null;
+  let centerRow = null;
+  let centerSettled = null; // where the timeline's middle ended up
+
+  /* Noticing when X lays itself out again for something that isn't a change
+     of width — moving to a monitor with different scaling, say — without
+     checking on a timer. X's menu column or the row holding everything
+     changes size when that happens, and the browser says so after it has
+     worked out the layout, so measuring then costs nothing extra. Each notice
+     is checked against where centering left the timeline, not the exact
+     middle: MED-X's own adjustment changes those sizes too, and finds the
+     timeline right where it put it, so it doesn't answer itself in a loop —
+     and a window too cramped to center fully isn't worked out over and over. */
+  let centerObserver = null;
+  let centerWatched = [];
+
+  function watchCenterLayout(...els) {
+    if (typeof ResizeObserver !== "function") return;
+    if (els.length === centerWatched.length && els.every((el, i) => el === centerWatched[i])) return;
+    if (!centerObserver) {
+      centerObserver = new ResizeObserver(() => {
+        if (!store.ready || centerSettled === null) return;
+        const col = document.querySelector('[data-testid="primaryColumn"]');
+        if (!col) return;
+        const r = col.getBoundingClientRect();
+        if (Math.abs(r.left + r.width / 2 - centerSettled) <= 2) return;
+        centerKey = null;
+        applyCentering();
+      });
+    }
+    centerObserver.disconnect();
+    centerWatched = els;
+    for (const el of els) centerObserver.observe(el);
+  }
+
+  function stopWatchingCenterLayout() {
+    if (centerObserver) centerObserver.disconnect();
+    centerWatched = [];
+  }
+
+  function clearCentering() {
+    const root = document.documentElement;
+    if (root.dataset.medxCentered) delete root.dataset.medxCentered;
+    if (root.dataset.medxCenterSide) delete root.dataset.medxCenterSide;
+    if (root.dataset.medxSearchNarrow) delete root.dataset.medxSearchNarrow;
+    root.style.removeProperty("--medx-center-shift");
+    root.style.removeProperty("--medx-search-width");
+    for (const el of document.querySelectorAll("[data-medx-center-row]")) delete el.dataset.medxCenterRow;
+  }
+
+  function applyCentering() {
+    const on = !!store.settings.centerTimeline;
+    const col = document.querySelector('[data-testid="primaryColumn"]');
+    const main = document.querySelector('main[role="main"]');
+    const header = document.querySelector('header[role="banner"]');
+    if (!on || !col || !main || !header) {
+      if (centerKey !== null || document.documentElement.dataset.medxCentered) clearCentering();
+      centerKey = null;
+      centerRow = null;
+      centerSettled = null;
+      stopWatchingCenterLayout();
+      return;
+    }
+    let row = main.parentElement;
+    while (row && !row.contains(header)) row = row.parentElement;
+    if (!row) return;
+
+    watchCenterLayout(row, header, col);
+    const key = window.innerWidth + "|" + window.location.pathname + "|" + (store.settings.flipLayout ? "flipped" : "");
+    if (key === centerKey && row === centerRow) return;
+
+    /* X's own layout, measured with the centering lifted. The middle is the
+       middle of the whole window, scrollbar included — what reads as the
+       middle of the screen. Centering on the page beside the scrollbar left
+       the timeline half a scrollbar left of that. The search column, though,
+       has to fit beside the scrollbar, not under it. */
+    clearCentering();
+    const r0 = col.getBoundingClientRect();
+    if (!r0.width) return; // not laid out yet: the next pass tries again
+    const root = document.documentElement;
+    const V = window.innerWidth;
+    const visible = root.clientWidth || V;
+    /* Which way the timeline needs to go. In X's layout it sits left of the
+       middle and goes right, room added on the row's left; flipped, the
+       wider search column is on the left, so it sits right of the middle and
+       goes left, room added on the row's right — the far end of the reversed
+       row, where its content is lined up from. */
+    const flipped = !!root.dataset.medxFlipped;
+    const dir = flipped ? -1 : 1;
+    const want = Math.round(((V - r0.width) / 2 - r0.left) * dir);
+    centerKey = key;
+    centerRow = row;
+    centerSettled = r0.left + r0.width / 2;
+    if (want <= 0) return; // already centered, or off the other way
+
+    row.dataset.medxCenterRow = "1";
+    root.dataset.medxCenterSide = flipped ? "right" : "left";
+    root.dataset.medxCentered = "1";
+
+    /* Room on the row's left doesn't always move the timeline one for one:
+       on a wide window X's menu column stretches to fill the left, and soaks
+       up some of it. So the room is set, how far the timeline actually moved
+       is measured, and the room scaled to match — the same each time at a
+       given width, so a second go usually lands it exactly. */
+    const place = (target) => {
+      let room = target;
+      for (let i = 0; i < 3; i++) {
+        root.style.setProperty("--medx-center-shift", room + "px");
+        const moved = (col.getBoundingClientRect().left - r0.left) * dir;
+        if (Math.abs(target - moved) < 1 || moved <= 0) break;
+        room = Math.round((room * target) / moved);
+        if (room > V) break;
+      }
+    };
+    place(want);
+
+    /* The search column, narrowed until its right edge is inside the window —
+       set, measured where it actually ended up, and corrected, as the
+       timeline is: assuming it simply moved with the timeline left it
+       running off the edge. Never below a usable width; past that, the
+       timeline moves back just enough, centering as nearly as it can. */
+    const side = document.querySelector('[data-testid="sidebarColumn"]');
+    if (side) {
+      const limit = visible - CENTER_EDGE;
+      let target = want;
+      /* How far the search column is over: past the window's right edge in
+         X's layout; flipped, it's on the left, and over when it crowds the
+         timeline closer than X's own gap between them. */
+      const overBy = () => {
+        const sr = side.getBoundingClientRect();
+        if (!sr.width) return 0;
+        if (!flipped) return sr.right - limit;
+        return sr.right + CENTER_GAP - col.getBoundingClientRect().left;
+      };
+      let sr = side.getBoundingClientRect();
+      if (sr.width && overBy() > 1) {
+        let w = Math.floor(sr.width - overBy());
+        root.dataset.medxSearchNarrow = "1";
+        for (let i = 0; i < 4; i++) {
+          w = Math.max(CENTER_MIN_SEARCH, w);
+          root.style.setProperty("--medx-search-width", w + "px");
+          const over = overBy();
+          if (over <= 1) break;
+          if (w > CENTER_MIN_SEARCH) {
+            w = Math.floor(w - over);
+          } else {
+            target = Math.max(0, target - Math.ceil(over));
+            place(target);
+          }
+        }
+      }
+    }
+    const placed = col.getBoundingClientRect();
+    centerSettled = placed.left + placed.width / 2;
+  }
+
+  /* After a resize, or a change of screen scaling — the window moved to
+     another monitor — measured again a few times over the next moments, so it
+     catches X's layout once X has finished rearranging itself, not halfway. */
+  let centerResizeTimers = [];
+  function recenterSoon() {
+    for (const t of centerResizeTimers) clearTimeout(t);
+    centerResizeTimers = [150, 700, 1500].map((ms) =>
+      setTimeout(() => {
+        if (!store.ready) return;
+        centerKey = null;
+        applyCentering();
+      }, ms)
+    );
+  }
+  window.addEventListener("resize", recenterSoon);
+  (function watchScaling() {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    const onChange = () => {
+      mq.removeEventListener("change", onChange);
+      recenterSoon();
+      watchScaling();
+    };
+    mq.addEventListener("change", onChange);
+  })();
+
+  /* ---------- folding the sidebar away ---------- */
+
+  /* A chevron below the Post button folds the nav and the Post button up out
+     of sight; the chevron, coming after them, rises to sit under the logo and
+     points down to unfold. Measured from X's page: the logo, nav and Post
+     button share one container — the nav directly, the logo and the button one
+     wrapper deep — and the account switcher is in another further down, so
+     folding the top group moves nothing else. The column keeps its width.
+
+     The fold animates by height. A height can't animate to "as tall as it
+     needs", so each part's real height is measured and used for the move,
+     then let go once it's done. The marks are put back on every pass: X
+     redraws its sidebar now and then. */
+  const CHEVRON =
+    "<svg viewBox='0 0 24 24' aria-hidden='true' width='22' height='22'>" +
+    "<path d='M6 15l6-6 6 6' fill='none' stroke='currentColor' stroke-width='2.4' " +
+    "stroke-linecap='round' stroke-linejoin='round'/></svg>";
+
+  /* The parts to fold, found without assuming how deep each is wrapped: from
+     the nav, climb to the container that also holds the Post button, then
+     take whichever of its children holds each. Assuming the nav sat directly
+     in that container — it doesn't, it has a wrapper of its own — meant the
+     Post button was never found: it wasn't folded, and the chevron landed
+     after the menu, above the button instead of below it. */
+  function foldParts() {
+    const nav = document.querySelector('nav[aria-label="Primary"]');
+    if (!nav) return null;
+    const post = document.querySelector('[data-testid="SideNav_NewTweet_Button"]');
+    const logo = document.querySelector('header h1');
+
+    let top = nav.parentElement;
+    if (post) {
+      while (top && !top.contains(post)) top = top.parentElement;
+      /* Never climb past the sidebar itself, whatever the page looks like. */
+      if (!top || top === document.body || top === document.documentElement) top = nav.parentElement;
+    }
+    if (!top) return null;
+
+    const childHolding = (el) => (el ? [...top.children].find((c) => c.contains(el)) || null : null);
+    /* Each part's wrapper — unless that wrapper also holds the logo, which
+       must never fold away; then the part alone. */
+    const wrapperFor = (el) => {
+      const w = childHolding(el);
+      return w && logo && w.contains(logo) ? el : w;
+    };
+    const navPart = wrapperFor(nav);
+    const postPart = post && top.contains(post) ? wrapperFor(post) : null;
+    const parts = [navPart, postPart].filter(Boolean);
+    return { top, parts, after: postPart || navPart };
+  }
+
+  function setFolded(folded) {
+    const found = foldParts();
+    const root = document.documentElement;
+    if (found) {
+      for (const el of found.parts) {
+        /* From its real height, so the move starts at once. */
+        el.style.maxHeight = (folded ? el.scrollHeight : 0) + "px";
+        void el.offsetHeight;
+      }
+    }
+    if (folded) root.dataset.medxNavFolded = "1";
+    else delete root.dataset.medxNavFolded;
+    if (found && !folded) {
+      for (const el of found.parts) el.style.maxHeight = el.scrollHeight + "px";
+      /* Let go once it's open, so the nav can grow or shrink freely after. */
+      setTimeout(() => {
+        if (!document.documentElement.dataset.medxNavFolded) {
+          for (const el of found.parts) el.style.maxHeight = "";
+        }
+      }, 320);
+    }
+  }
+
+  function ensureFoldToggle() {
+    const found = foldParts();
+    let toggle = document.querySelector("[data-medx-fold-toggle]");
+    if (!found) return;
+    for (const el of found.parts) {
+      if (!el.dataset.medxFold) el.dataset.medxFold = "1";
+    }
+
+    /* Made once; where it sits is placeChevron's business — in the column
+       below the Post button, or beside the logo while folded. */
+    if (!toggle) {
+      const holder = document.createElement("div");
+      holder.className = "medx-fold-holder";
+      toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "medx-fold-toggle";
+      toggle.dataset.medxFoldToggle = "1";
+      toggle.innerHTML = CHEVRON;
+      toggle.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!alive()) {
+          showRefreshNotice();
+          return;
+        }
+        const folded = !store.settings.sidebarFolded;
+        store.settings.sidebarFolded = folded;
+        store.saveSettings(store.settings, "fold sidebar");
+        setFolded(folded);
+        markFold(toggle);
+        placeChevron(toggle.parentElement, foldParts());
+      });
+      holder.appendChild(toggle);
+      found.after.after(holder);
+    }
+
+    /* The page agrees with the saved choice — after a reload, or a change
+       made in another tab. The first time, it's set without animating, so a
+       page that opens folded doesn't visibly fold up as it appears; changes
+       after that animate. */
+    const folded = !!store.settings.sidebarFolded;
+    const root = document.documentElement;
+    if (!foldShown) {
+      foldShown = true;
+      if (folded) root.dataset.medxNavFolded = "1";
+      else delete root.dataset.medxNavFolded;
+    } else if (!!root.dataset.medxNavFolded !== folded) {
+      setFolded(folded);
+    }
+    markFold(toggle);
+    placeChevron(toggle.parentElement, found);
+  }
+
+  let foldShown = false;
+
+  /* Folded, the chevron sits to the left of the logo, centred on it.
+
+     It's moved out of X's page altogether for that — onto the page root,
+     fixed to the screen beside the logo. Placed inside X's sidebar, to the
+     left of the logo is outside the column, and X clips whatever spills out
+     of it: the chevron was there but cut off, invisible, and with it the
+     only way to unfold the menu. Out of X's page, nothing of X's can clip it.
+     There it no longer inherits X's text colour, so it takes the menu's with
+     it — on its own it would turn the browser's default black.
+
+     If there's no room left of the logo — X's narrow layout, a cramped
+     window — it stays in the column instead, where with the menu folded it
+     sits just under the logo. Either way the control that brings the menu
+     back is always on screen. Unfolded, it's back below the Post button.
+
+     Placed from the logo's own position on every pass and on resize, so it
+     follows any logo, the wider wordmark included. */
+  const CHEVRON_GAP = 4;
+  const CHEVRON_ROOM = 4; // the least it may sit from the window's left edge
+
+  function placeChevron(holder, found) {
+    if (!holder || !found) return;
+    const folded = !!store.settings.sidebarFolded;
+    const logo = document.querySelector('header h1 a[href="/home"]') || document.querySelector("header h1");
+
+    let floating = false;
+    if (folded && logo) {
+      const box = logo.getBoundingClientRect();
+      const size = 50;
+      const top = Math.round(box.top + (box.height - size) / 2);
+      /* On the logo's left if there's room, else its right, else under it.
+         Room means inside the window and clear of the timeline — which is on
+         the logo's right in X's layout, its left with the layout flipped. */
+      const col = document.querySelector('[data-testid="primaryColumn"]');
+      const cr = col && col.getBoundingClientRect();
+      const fits = (x) =>
+        x >= CHEVRON_ROOM &&
+        x + size <= window.innerWidth - CHEVRON_ROOM &&
+        (!cr || !cr.width || x + size <= cr.left - CHEVRON_GAP || x >= cr.right + CHEVRON_GAP);
+      let left = Math.round(box.left - size - CHEVRON_GAP);
+      if (!fits(left)) {
+        const right = Math.round(box.right + CHEVRON_GAP);
+        left = fits(right) ? right : NaN;
+      }
+      if (!Number.isNaN(left) && top >= 0 && box.width > 0) {
+        floating = true;
+        if (holder.parentElement !== document.documentElement) document.documentElement.appendChild(holder);
+        holder.dataset.medxFloating = "1";
+        const colour = getComputedStyle(found.parts[0] || found.top).color;
+        if (colour && holder.style.color !== colour) holder.style.color = colour;
+        if (holder.style.left !== left + "px") holder.style.left = left + "px";
+        if (holder.style.top !== top + "px") holder.style.top = top + "px";
+      }
+    }
+
+    if (!floating) {
+      delete holder.dataset.medxFloating;
+      holder.style.left = "";
+      holder.style.top = "";
+      holder.style.color = "";
+      if (holder.parentElement !== found.top || holder.previousElementSibling !== found.after) {
+        found.after.after(holder);
+      }
+    }
+  }
+
+  window.addEventListener("resize", () => {
+    const holder = document.querySelector(".medx-fold-holder");
+    if (holder && store.ready) placeChevron(holder, foldParts());
+  });
+
+  /* The chevron's label and state, and the changelog's green dot while the
+     MED-X button is folded away with the nav — so an update is still seen. */
+  /* X's notification count, the circle on its Notifications item — hidden
+     with the menu when it's folded, but still in the page. Found by its
+     "unread" label, or failing that by the element holding just a number
+     ("3", "20+"); then the whole circle around it, short of the icon and the
+     word "Notifications". */
+  function notificationBadge() {
+    const link = document.querySelector('a[data-testid="AppTabBar_Notifications_Link"], a[href="/notifications"]');
+    if (!link) return null;
+    let el = link.querySelector('[aria-label*="unread" i]');
+    if (!el) {
+      el = [...link.querySelectorAll("*")].find(
+        (n) => !n.children.length && /^\d+\+?$/.test((n.textContent || "").trim())
+      );
+    }
+    if (!el) return null;
+    const count = (el.textContent || "").trim();
+    if (!count) return null;
+    while (
+      el.parentElement &&
+      el.parentElement !== link &&
+      (el.parentElement.textContent || "").trim() === count &&
+      !el.parentElement.querySelector("svg")
+    ) {
+      el = el.parentElement;
+    }
+    return { el, count };
+  }
+
+  /* Folded, the chevron wears a copy of X's notification circle, as X's
+     Notifications item would — X's own look, its own number, refreshed as it
+     changes, gone when there's nothing unread. Pinned to the chevron's
+     corner, as X's own placement is for its icon. */
+  function syncFoldBadge(toggle, found) {
+    let holder = toggle.querySelector(":scope > .medx-fold-badge");
+    if (!found) {
+      if (holder) holder.remove();
+      if (toggle.dataset.medxNotified) delete toggle.dataset.medxNotified;
+      return;
+    }
+    if (!holder) {
+      holder = document.createElement("span");
+      holder.className = "medx-fold-badge";
+      holder.setAttribute("aria-hidden", "true");
+      toggle.appendChild(holder);
+    }
+    const key = found.el.outerHTML;
+    if (holder.dataset.key !== key) {
+      holder.textContent = "";
+      const copy = found.el.cloneNode(true);
+      copy.removeAttribute("id");
+      for (const inner of copy.querySelectorAll("[id]")) inner.removeAttribute("id");
+      holder.appendChild(copy);
+      holder.dataset.key = key;
+    }
+    if (!toggle.dataset.medxNotified) toggle.dataset.medxNotified = "1";
+  }
+
+  function markFold(toggle) {
+    const folded = !!store.settings.sidebarFolded;
+    toggle.setAttribute("aria-expanded", folded ? "false" : "true");
+    const notified = folded ? notificationBadge() : null;
+    syncFoldBadge(toggle, notified);
+    toggle.setAttribute(
+      "aria-label",
+      (folded ? "Show the sidebar's menu" : "Fold the sidebar's menu away") +
+        (notified ? `, ${notified.count} unread notifications` : "")
+    );
+    toggle.title = folded ? "Show the menu" : "Fold the menu away";
+    const unseen = folded && MEDX.unseenChanges(store.settings.changelogSeen, store.settings.changelogSeenItems).length > 0;
+    if (unseen) {
+      if (!toggle.dataset.medxUnseen) toggle.dataset.medxUnseen = "1";
+      const pageBg = getComputedStyle(document.body).backgroundColor;
+      const seeThrough = !pageBg || pageBg === "transparent" || /rgba\([^)]*,\s*0\)$/.test(pageBg);
+      toggle.style.setProperty("--medx-badge-ring", seeThrough ? store.settings.timelineBackground || "#000" : pageBg);
+    } else if (toggle.dataset.medxUnseen) {
+      delete toggle.dataset.medxUnseen;
+    }
+    matchDotToBadge(toggle);
+  }
+
+  /* With X's notification circle on the chevron, the changelog's dot below it
+     is centred straight under it — measured, as the circle's width changes
+     with its number. (Its outline is a 1px border, as X's circle has, in the
+     stylesheet.) */
+  function matchDotToBadge(toggle) {
+    const copy = toggle.querySelector(":scope > .medx-fold-badge > *");
+    if (!copy || !toggle.dataset.medxUnseen) {
+      toggle.style.removeProperty("--medx-dot-left");
+      return;
+    }
+    const t = toggle.getBoundingClientRect();
+    const b = copy.getBoundingClientRect();
+    if (b.width) {
+      toggle.style.setProperty("--medx-dot-left", Math.round(b.left - t.left + b.width / 2 - 8) + "px");
+    }
+  }
+
+  /* Videos at full quality: the setting mirrored into the page's
+     localStorage, where net.js — in the page's own world, with no access to
+     the settings — reads it the moment a video playlist arrives. Written only
+     when it changes. */
+  const FULL_QUALITY_KEY = "medx-video-full";
+  let fullQualityMirrored = null;
+  function mirrorFullQuality() {
+    const want = store.settings.media && store.settings.media.fullQuality !== false ? "1" : "0";
+    if (want === fullQualityMirrored) return; // this runs every scan; localStorage is read once
+    try {
+      if (window.localStorage.getItem(FULL_QUALITY_KEY) !== want) window.localStorage.setItem(FULL_QUALITY_KEY, want);
+      fullQualityMirrored = want;
+    } catch {}
+  }
+
   function applyClutterFlags() {
+    mirrorFullQuality();
     applySectionColours();
+    applyLayoutFlip();
+    applyMenuLeft();
     ensureSidebarButton();
+    ensureFoldToggle();
+    applyCentering();
     applyLogo();
     applyFont();
     applyBackground();
@@ -11563,7 +14268,8 @@ try {
       ["follow", "medxNavFollow"],
       ["grok", "medxNavGrok"],
       ["creatorStudio", "medxNavCreator"],
-      ["premium", "medxNavPremium"]
+      ["premium", "medxNavPremium"],
+      ["money", "medxNavMoney"]
     ]) {
       if (s.sidebar[key]) root.dataset[attribute] = "1";
       else delete root.dataset[attribute];
@@ -11574,6 +14280,7 @@ try {
       ["photoGrid", "medxPhotoGrid"],
       ["hideWhatsHappening", "medxHideTrends"],
       ["footerToCorner", "medxFooterCorner"],
+      ["hideFooter", "medxHideFooter"],
       ["hideGrokOnPosts", "medxHideGrokPosts"]
     ]) {
       if (s[key]) root.dataset[attribute] = "1";
@@ -11635,6 +14342,433 @@ try {
     }
   }
 
+
+  /* ---------- playback speed ----------
+
+     A default speed from the settings for every video of X's — X's own speed
+     option, in its player's gear menu, is per video and starts each one at
+     1x. The browser keeps the pitch natural at any speed.
+
+     X sets the speed back when it loads or reloads a video, so the right one
+     is put back each time — and set as the video's default rate too, which a
+     reload starts from. A change made in X's gear menu is the person's: one
+     just after a click or key press is kept for that video, while one out of
+     nowhere is X resetting, and undone.
+
+     A speed picked for one video is tied to what it's playing: X reuses its
+     players as the timeline scrolls, and the pick mustn't carry over to the
+     next video shown in the same place. MED-X's own background video isn't
+     one of X's, and is left alone. */
+  const VIDEO_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  const speedPicked = new WeakMap(); // video -> { src, rate }
+
+  /* The last press or key, and whether it could have been a speed pick. Any
+     gesture was enough before — but clicking a video's preview to start it is
+     a press too, and that is the moment X mounts its player and sets the rate
+     to 1, so the reset was taken for the person's own 1x pick and the default
+     never reached a video started that way. A press on the video itself is
+     never a speed pick; one in X's gear menu is.
+
+     Where that menu is drawn depends: in #layers, away from the player — or,
+     in X's own fullscreen, inside the player, in the little box that holds
+     the gear button, with no roles and no labels to know it by. So a press
+     counts if it is any of: in #layers or on something with a menu's role; on
+     something that reads as a speed ("1.5x"); in a control's pop-up, known by
+     its place (see controlPopUp); or, failing all of those, on something
+     small inside a player that isn't one of its labelled controls. Which one
+     it was is kept, for the record of presses. A key counts by where the
+     focus is. */
+  const MENU_SEL =
+    '#layers, [role="menu"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="radio"], [role="listbox"], [role="option"]';
+  const PLAYER_SEL = '[data-testid="videoPlayer"], [data-testid="videoComponent"]';
+  const SPEED_LABEL = /^\s*\d+(?:[.,]\d+)?\s*[x×]\s*$/i;
+  const SPEED_IN_LABEL = /\d+(?:[.,]\d+)?\s*[x×](?![a-z])/i;
+  let lastGesture = { at: 0, kind: "", player: null };
+
+  function speedPressKind(el) {
+    if (!el || !el.closest) return "";
+    if (el.closest(MENU_SEL)) return "a menu";
+
+    const labelled = el.closest('button[aria-label], [role="button"][aria-label]');
+    const says = labelled ? labelled.getAttribute("aria-label") || "" : "";
+    if (SPEED_IN_LABEL.test(says)) return "a speed";
+
+    /* The pressed thing and whatever merely wraps it: the same words, a level
+       or two up. Not further — a box holding the whole menu reads as more.
+
+       This runs on every press anywhere, and reading an element's text
+       serialises everything under it: a press on the column's edge lands on
+       the column, and read the whole timeline. A speed label is a leaf, or
+       near one, so anything with more than a few children is not read. */
+    const own = el.childElementCount <= 3 ? (el.textContent || "").trim() : "";
+    if (own && own.length <= 12) {
+      for (let node = el, up = 0; node && node.nodeType === 1 && up < 6; node = node.parentElement, up++) {
+        if ((node.textContent || "").trim() !== own) break;
+        if (SPEED_LABEL.test(own)) return "a speed";
+      }
+    }
+    /* The rest measures boxes up the page, and only a press in a player or
+       inside whatever is fullscreen can be one of these. */
+    const full = document.fullscreenElement;
+    const player = el.closest(PLAYER_SEL);
+    if (!player && !(full && full.contains(el))) return "";
+    if (controlPopUp(el, null, 30)) return "a control's pop-up";
+
+    if (!player || el.tagName === "VIDEO") return "";
+    if (el.closest('button[aria-label], [role="button"][aria-label], [data-testid="scrubber"], [role="slider"], input')) return "";
+    const video = player.querySelector("video");
+    const box = el.getBoundingClientRect();
+    const whole = video ? video.getBoundingClientRect() : null;
+    if (box.width && box.height && whole && whole.width && whole.height &&
+        box.width < whole.width * 0.6 && box.height < whole.height * 0.6) {
+      return "something small in the player";
+    }
+    return "";
+  }
+
+  function noteGesture(el) {
+    lastGesture = {
+      at: Date.now(),
+      kind: speedPressKind(el),
+      player: el && el.closest ? el.closest('[data-testid="videoPlayer"]') : null
+    };
+  }
+
+  window.addEventListener("pointerdown", (e) => noteGesture(e.target), true);
+  window.addEventListener("keydown", () => noteGesture(document.activeElement), true);
+
+  function defaultSpeed() {
+    const v = Number(store.settings.media && store.settings.media.playbackSpeed);
+    return VIDEO_SPEEDS.includes(v) ? v : 1;
+  }
+
+  function playingWhat(video) {
+    return video.currentSrc || video.getAttribute("src") || "";
+  }
+
+  function speedFor(video) {
+    const picked = speedPicked.get(video);
+    if (picked && picked.src === playingWhat(video)) return picked.rate;
+    return defaultSpeed();
+  }
+
+  function setRate(video, rate) {
+    try {
+      if (video.defaultPlaybackRate !== rate) video.defaultPlaybackRate = rate;
+      if (video.playbackRate !== rate) video.playbackRate = rate;
+    } catch {}
+  }
+
+  /* A video whose speed isn't the one wanted for it: either the person just
+     picked it in X's gear menu — kept, for this video — or X set it, and it
+     is put back.
+
+     Decided here for every way of noticing, not only when the browser reports
+     the change. It reports a moment after the change is made, and picking a
+     speed also redraws X's menu, which sets off a scan; just after a click
+     the browser runs that scan first. The scan used to put the default back
+     on sight, so by the time the change was reported the speed was the
+     default again and there was nothing to keep: X's menu showed the speed
+     picked while the video played on at the old one. */
+  function settleSpeed(video) {
+    const wanted = speedFor(video);
+    if (video.playbackRate === wanted) return;
+    const press = lastGesture;
+    const theirs =
+      !!press.kind &&
+      Date.now() - press.at < 1500 &&
+      (!press.player || press.player.contains(video)); // a press in one player says nothing of another's
+    const rate = video.playbackRate;
+    if (theirs) {
+      speedPicked.set(video, { src: playingWhat(video), rate });
+      /* One press, one pick: the next change is not this press's doing. */
+      lastGesture = { at: press.at, kind: "", player: null };
+    } else {
+      setRate(video, wanted); // X setting it back, or resetting on load: undone
+    }
+    if (pressLive) {
+      logFullscreen({
+        at: Math.round(performance.now()),
+        speed: theirs ? "kept as the person's pick" : "put back",
+        rate,
+        wanted,
+        press: press.kind || "(not one that could pick a speed)",
+        pressAgo: Date.now() - press.at
+      });
+    }
+  }
+
+  function watchSpeed(video) {
+    if (video.dataset.medxSpeedWatch) return;
+    video.dataset.medxSpeedWatch = "1";
+    for (const type of ["ratechange", "loadedmetadata", "play"]) {
+      video.addEventListener(type, () => settleSpeed(video));
+    }
+  }
+
+  function applyVideoSpeed() {
+    for (const video of document.querySelectorAll('[data-testid="videoPlayer"] video')) {
+      watchSpeed(video);
+      settleSpeed(video);
+    }
+  }
+
+  /* ---------- a horizontal volume slider ----------
+
+     X's volume control is a pop-up, a thin vertical bar that appears above the
+     mute button on hover and goes again as soon as the pointer drifts. In its
+     place: a horizontal slider right after the mute button, always there,
+     with the volume as a number beside it. X's time readout moves to the left
+     of the bar, next to play/pause, to make room.
+
+     Nothing of X's is moved: X's page keeps track of its own pieces, and moved
+     ones can be snapped back or break it. So X's pop-up and time readout are
+     hidden, and ours sit alongside — the readout a copy of X's, in X's own
+     styling, kept up to date from the video.
+
+     The slider sets the volume level. Muting and unmuting go through X's own
+     mute button, pressed for you, so X's icon and its own idea of whether the
+     video is muted always agree: dragged to 0 it mutes, dragged up from muted
+     it unmutes. Scrolling over it moves it 5 at a time. Its clicks are kept
+     from X, which would take them as a click on the video.
+
+     Marked data-medx-vol-slider — not data-medx-volume, which the starting
+     volume puts on the video itself: sharing it, tidying the slider away
+     took the video with it. */
+  const VOLUME_STEP = 5;
+
+  function clockTime(seconds) {
+    let s = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    s %= 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : String(m)) + ":" + String(s).padStart(2, "0");
+  }
+
+  /* X's control bar, found by its parts: the mute button, the box holding it
+     and its pop-up, the group of controls on the right that box sits in, the
+     group on the left with play/pause, and the time readout among the right
+     group's pieces.
+
+     Only the bar itself: its row sits directly under the seek bar, in the
+     same box. X has other mute buttons on a video — a small one in a corner
+     while the bar is hidden — and taking one of those for the bar's put a
+     second slider in the video's corner. Mute is found by its label, or
+     failing that as the button whose box also holds the volume pop-up. */
+  /* Found afresh on every pass, on purpose. It was kept from one pass to the
+     next for a while, reused as long as the same pieces were still joined up
+     — but X hides its controls by taking most of them away and leaving the
+     mute button behind in the corner, on the very same pieces. Finding it
+     afresh is what notices: a group with a mute button and little else is not
+     the bar, and what was put there for the bar is taken out again. Kept, the
+     slider stayed in the corner beside X's mute button with the controls
+     gone.
+
+     The 3.2.0 review offered the cache again, this time re-checking what
+     finding does. It reads right, and passes every test here — as the first
+     one did, before it broke fullscreen's controls on X itself, which nothing
+     here can play back. Measured in Chromium with three players on screen,
+     finding afresh costs about 0.02ms a scan. Not worth it for a build about
+     to ship; worth another look in one that gets used on X for a while. */
+  function controlBar(player) {
+    return findControlBar(player);
+  }
+
+  function findControlBar(player) {
+    const scrubber = player.querySelector('[data-testid="scrubber"]');
+    const candidates = [...player.querySelectorAll("button[aria-label]")].filter((b) =>
+      /mute/i.test(b.getAttribute("aria-label"))
+    );
+    if (!candidates.length) {
+      const pop = [...player.querySelectorAll('[role="slider"]')].find((el) => !el.closest('[data-testid="scrubber"]'));
+      for (let el = pop; el && el !== player; el = el.parentElement) {
+        const b = [...el.children].find((c) => c.tagName === "BUTTON");
+        if (b) {
+          candidates.push(b);
+          break;
+        }
+      }
+    }
+    for (const mute of candidates) {
+      const muteWrap = mute.parentElement;
+      const right = muteWrap && muteWrap.parentElement;
+      const row = right && right.parentElement;
+      if (!row || row === player || (scrubber && row.contains(scrubber))) continue;
+      /* The bar's right group holds several controls — mute, settings,
+         picture-in-picture, fullscreen — and its left group play/pause. A
+         corner mute button has neither. Not the seek bar: X doesn't show one
+         until a video has started. */
+      if (right.querySelectorAll("button").length < 3) continue;
+      const left = [...row.children].find((c) => c !== right && c.querySelector("button"));
+      if (!left) continue;
+      const time = [...right.children].find(
+        (c) => !c.querySelector("button") && !c.dataset.medxVolSlider && /^\d+:\d\d/.test((c.textContent || "").trim())
+      );
+      return { mute, muteWrap, right, left, time };
+    }
+    return null;
+  }
+
+  function unhookVolumeSlider(player) {
+    for (const el of player.querySelectorAll("[data-medx-vol-slider], [data-medx-volume-time]")) el.remove();
+    for (const el of player.querySelectorAll("[data-medx-x-time]")) delete el.dataset.medxXTime;
+    for (const el of player.querySelectorAll("[data-medx-mute-wrap]")) delete el.dataset.medxMuteWrap;
+  }
+
+  function buildVolumeSlider() {
+    const wrap = document.createElement("div");
+    wrap.dataset.medxVolSlider = "1";
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = "100";
+    input.step = "1";
+    input.setAttribute("aria-label", "Volume");
+    const num = document.createElement("span");
+    num.className = "medx-volume-num";
+    num.setAttribute("aria-hidden", "true");
+    wrap.append(input, num);
+
+    const setLevel = (level) => {
+      const video = wrap.__medxVideo;
+      const mute = wrap.__medxMute;
+      if (!video) return;
+      level = Math.max(0, Math.min(100, Math.round(level)));
+      if (level === 0) {
+        if (!video.muted) {
+          if (mute && mute.isConnected) mute.click();
+          if (!video.muted) video.muted = true;
+        }
+      } else {
+        video.volume = level / 100;
+        if (video.muted) {
+          if (mute && mute.isConnected) mute.click();
+          if (video.muted) video.muted = false;
+        }
+      }
+      showVolume(wrap);
+    };
+    input.addEventListener("input", () => setLevel(Number(input.value)));
+    wrap.addEventListener(
+      "wheel",
+      (e) => {
+        if (e.altKey) return; // Alt + scroll is zoom
+        e.preventDefault();
+        e.stopPropagation();
+        const now = Number(input.value);
+        setLevel(now + (e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP));
+      },
+      { passive: false }
+    );
+    for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "keydown"]) {
+      wrap.addEventListener(type, (e) => e.stopPropagation());
+    }
+    return wrap;
+  }
+
+  function showVolume(wrap) {
+    const video = wrap.__medxVideo;
+    if (!video) return;
+    const level = video.muted ? 0 : Math.round(video.volume * 100);
+    const input = wrap.querySelector("input");
+    if (String(level) !== input.value) input.value = String(level);
+    const text = level + "%";
+    const num = wrap.querySelector(".medx-volume-num");
+    if (num.textContent !== text) num.textContent = text;
+    wrap.style.setProperty("--medx-vol", level + "%");
+    input.setAttribute("aria-valuetext", video.muted ? "Muted" : text);
+  }
+
+  function showVideoTime(copy, xTime, video) {
+    /* A live stream has no length to count towards: X's own readout stays. */
+    if (video.duration === Infinity) {
+      copy.hidden = true;
+      if (xTime.dataset.medxXTime) delete xTime.dataset.medxXTime;
+      return;
+    }
+    copy.hidden = false;
+    if (!xTime.dataset.medxXTime) xTime.dataset.medxXTime = "1";
+    /* Not loaded yet, so its length isn't known — as before it's played: what
+       X's own readout says, which X knows from the post. */
+    const text = Number.isFinite(video.duration)
+      ? clockTime(video.currentTime) + " / " + clockTime(video.duration)
+      : (xTime.textContent || "").trim();
+    const leaf = copy.__medxLeaf || copy;
+    if (leaf.textContent !== text) leaf.textContent = text;
+  }
+
+  function applyVolumeSlider() {
+    const on = store.settings.media && store.settings.media.horizontalVolume !== false;
+    for (const player of document.querySelectorAll('[data-testid="videoPlayer"]')) {
+      const video = player.querySelector("video");
+      if (!on || !video) {
+        if (player.querySelector("[data-medx-vol-slider], [data-medx-x-time]")) unhookVolumeSlider(player);
+        continue;
+      }
+      const bar = controlBar(player);
+      /* Anything of ours not in the bar as it now stands — from a moment the
+         bar couldn't be told apart, or one X has since redrawn — goes. */
+      for (const el of player.querySelectorAll("[data-medx-vol-slider], [data-medx-volume-time], [data-medx-mute-wrap], [data-medx-x-time]")) {
+        const inBar =
+          bar &&
+          ((el.dataset.medxVolSlider && el.parentElement === bar.right) ||
+            (el.dataset.medxVolumeTime && el.parentElement === bar.left) ||
+            (el.dataset.medxMuteWrap && el === bar.muteWrap) ||
+            (el.dataset.medxXTime && el === bar.time));
+        if (inBar) continue;
+        if (el.dataset.medxVolSlider || el.dataset.medxVolumeTime) el.remove();
+        else {
+          delete el.dataset.medxMuteWrap;
+          delete el.dataset.medxXTime;
+        }
+      }
+      if (!bar) continue;
+      if (!bar.muteWrap.dataset.medxMuteWrap) bar.muteWrap.dataset.medxMuteWrap = "1";
+
+      let wrap = bar.right.querySelector(":scope > [data-medx-vol-slider]");
+      if (!wrap) {
+        wrap = buildVolumeSlider();
+        bar.muteWrap.after(wrap);
+      } else if (wrap.previousElementSibling !== bar.muteWrap) {
+        bar.muteWrap.after(wrap);
+      }
+      wrap.__medxMute = bar.mute;
+      if (wrap.__medxVideo !== video) {
+        wrap.__medxVideo = video;
+        video.addEventListener("volumechange", () => {
+          if (wrap.__medxVideo === video) showVolume(wrap);
+        });
+      }
+      showVolume(wrap);
+
+      /* The time readout, copied to the left of the bar. */
+      if (bar.time && bar.left) {
+        let copy = bar.left.querySelector(":scope > [data-medx-volume-time]");
+        if (!copy) {
+          copy = bar.time.cloneNode(true);
+          copy.dataset.medxVolumeTime = "1";
+          delete copy.dataset.medxXTime;
+          /* No ids carried over: two elements with one id is never right. */
+          for (const el of [copy, ...copy.querySelectorAll("[id]")]) el.removeAttribute("id");
+          copy.__medxLeaf =
+            [...copy.querySelectorAll("*")].find((el) => !el.children.length && /\d+:\d\d/.test(el.textContent)) || copy;
+          const first = bar.left.firstElementChild;
+          if (first) first.after(copy);
+          else bar.left.appendChild(copy);
+        }
+        if (copy.__medxVideo !== video) {
+          copy.__medxVideo = video;
+          for (const type of ["timeupdate", "durationchange", "loadedmetadata", "seeked", "emptied"]) {
+            video.addEventListener(type, () => {
+              if (copy.__medxVideo === video) showVideoTime(copy, bar.time, video);
+            });
+          }
+        }
+        copy.__medxXTime = bar.time;
+        showVideoTime(copy, bar.time, video);
+      }
+    }
+  }
 
   /* Kick off watermark sampling for any playing video, and mark its post once
      a verdict lands. The status id comes from the enclosing cell. */
@@ -11805,6 +14939,9 @@ try {
     applyClutterFlags();
     applyStingerWatch();
     applyVideoVolume();
+    applyVideoSpeed();
+    applyVolumeSlider();
+    checkZoom();
     applyWatermarkWatch();
     ensureFonts();
     refreshWatchStyles();
@@ -11961,6 +15098,211 @@ try {
     }
   }
 
+  /* A record of presses while anything is fullscreen — ours or X's own — for
+     the page console: what was pressed, what lay under the pointer, what X
+     had open, and what each part of this made of it.
+     copy(JSON.stringify(await MEDX_DEBUG.fullscreenClicks()))
+
+     Kept ahead of every handler that might take a press, so it sees them all;
+     the handlers add their verdicts to the press as they decide. It used to
+     record only inside MED-X's own fullscreen, from the middle of that
+     handler, and came back empty for anything else.
+
+     Off until asked for — run that line once, then do the clicks. */
+  const PRESS_LOG = 9; // which cut of this record a report came from
+  const fullscreenPresses = [];
+  let pressEntry = null;
+  let lastLayersOutline = "";
+
+  /* Nothing is recorded until the record is asked for: it measures boxes up
+     the page and reads what lies under the pointer on every press on a
+     player or in X's pop-up layer — every click in the composer included —
+     which is no thing to leave running for everyone. Asking for it switches
+     it on, and from then each thing recorded is printed to the console as it
+     happens as well, so asking first and clicking after — the natural order —
+     shows the clicks. */
+  let pressLive = false;
+
+  function printPress(entry) {
+    if (!pressLive) return;
+    try {
+      console.log("[MEDX click] " + JSON.stringify(entry));
+    } catch (err) {
+      /* only a diagnostic */
+    }
+  }
+
+  function logFullscreen(entry) {
+    fullscreenPresses.push(entry);
+    if (fullscreenPresses.length > 40) fullscreenPresses.shift();
+    if (!("target" in entry)) printPress(entry); // a press is printed once its outcome is known
+  }
+
+  function tagOf(el) {
+    if (!el || el.nodeType !== 1) return el ? el.nodeName : "(none)";
+    let out = el.tagName.toLowerCase();
+    if (el.id) out += "#" + el.id;
+    const testid = el.getAttribute("data-testid");
+    if (testid) out += `[${testid}]`;
+    const role = el.getAttribute("role");
+    if (role) out += `{${role}}`;
+    const label = el.getAttribute("aria-label");
+    if (label) out += `"${label.slice(0, 30)}"`;
+    if (el.getAttribute("aria-expanded")) out += " expanded=" + el.getAttribute("aria-expanded");
+    if (el === document.fullscreenElement) out += " <- fullscreen";
+    return out;
+  }
+
+  function boxOf(el) {
+    const b = el.getBoundingClientRect();
+    return [b.left, b.top, b.width, b.height].map(Math.round).join(",");
+  }
+
+  function fullscreenIsOurs() {
+    const current = document.fullscreenElement;
+    return !!(
+      ourFullscreen && current &&
+      (current === ourFullscreen || ourFullscreen.contains(current) || current.contains(ourFullscreen))
+    );
+  }
+
+  function recordPress(e) {
+    try {
+      const full = document.fullscreenElement;
+      const scope = full || document;
+      const entry = {
+        at: Math.round(performance.now()),
+        verdicts: [],
+        fullscreen: full ? tagOf(full) : "none",
+        viewer: !!document.querySelector('[aria-modal="true"]'),
+        ours: fullscreenIsOurs(),
+        button: e.button,
+        point: Math.round(e.clientX) + "," + Math.round(e.clientY),
+        target: tagOf(e.target),
+        path: [],
+        under: []
+      };
+      pressEntry = entry;
+      logFullscreen(entry);
+      for (let el = e.target, up = 0; el && el.nodeType === 1 && up < 16; el = el.parentElement, up++) {
+        entry.path.push(tagOf(el) + " " + boxOf(el));
+        if (el === full) break;
+      }
+      if (document.elementsFromPoint) {
+        entry.under = document
+          .elementsFromPoint(e.clientX, e.clientY)
+          .slice(0, 12)
+          .map((el) => tagOf(el) + " " + boxOf(el) + (el.closest("#layers") ? " @layers" : ""));
+      }
+      const video = scope.querySelector("video");
+      entry.playing = video ? !video.paused : null;
+      entry.expanded = [...scope.querySelectorAll('[aria-expanded="true"]')].slice(0, 5).map(tagOf);
+      const layers = document.getElementById("layers");
+      const around = video ? playerAround(video) : null;
+      if (around) {
+        entry.player = {
+          buttons: [...around.querySelectorAll('button[aria-label], [role="button"][aria-label]')]
+            .slice(0, 14)
+            .map((b) => (b.getAttribute("aria-label") || "").slice(0, 24) + " " + boxOf(b)),
+          menuOpen: menuOpenIn(around),
+          choices: around.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="menuitemradio"]').length,
+          ours: around.querySelectorAll("[data-medx-vol-slider], [data-medx-volume-time]").length
+        };
+      }
+      entry.menus = {
+        inFullscreen: full ? full.querySelectorAll('[role="menu"]').length : 0,
+        inLayers: layers ? layers.querySelectorAll('[role="menu"]').length : 0,
+        layersInFullscreen: !!layers && !!full && full.contains(layers)
+      };
+      if (layers) {
+        /* What X has in its pop-up layer just now, a few levels down. */
+        const lines = [];
+        const walk = (el, depth) => {
+          if (lines.length >= 40 || depth > 7) return;
+          const style = getComputedStyle(el);
+          lines.push(
+            "  ".repeat(depth) + tagOf(el) + " " + style.position + " " + boxOf(el) +
+              (style.pointerEvents !== "auto" ? " pointer-events:" + style.pointerEvents : "")
+          );
+          for (const child of el.children) walk(child, depth + 1);
+        };
+        walk(layers, 0);
+        const outline = lines.join("\n");
+        entry.layers = outline === lastLayersOutline ? "(as in the press before)" : lines;
+        lastLayersOutline = outline;
+      }
+    } catch (err) {
+      /* a diagnostic never gets in the way of the press */
+    }
+  }
+
+  function sayPress(text) {
+    if (pressEntry) pressEntry.verdicts.push(text);
+  }
+
+  /* Anywhere something is fullscreen, and otherwise on a player, a media
+     tile, or X's pop-up layer — so a press in X's viewer, or in a fullscreen
+     the browser doesn't report as one, is still there to look at. */
+  function worthRecording(target) {
+    if (document.fullscreenElement) return true;
+    return !!(
+      target && target.closest &&
+      target.closest('[data-testid="videoPlayer"], [data-testid="tweetPhoto"], video, #layers')
+    );
+  }
+
+  function stateNow() {
+    const scope = document.fullscreenElement || document;
+    const video = scope.querySelector("video");
+    const layers = document.getElementById("layers");
+    return {
+      playing: video ? !video.paused : null,
+      expanded: [...scope.querySelectorAll('[aria-expanded="true"]')].slice(0, 5).map(tagOf),
+      menusInLayers: layers ? layers.querySelectorAll('[role="menu"]').length : 0,
+      fullscreen: document.fullscreenElement ? tagOf(document.fullscreenElement) : "none"
+    };
+  }
+
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      pressEntry = null;
+      if (dead || !pressLive || !worthRecording(e.target)) return;
+      recordPress(e);
+      /* And how things stood once it had been dealt with: whether the menu
+         closed, whether the video paused. */
+      const entry = pressEntry;
+      if (entry) {
+        setTimeout(() => {
+          try { entry.after = stateNow(); } catch (err) { /* only a diagnostic */ }
+          printPress(entry);
+        }, 450);
+      }
+    },
+    true
+  );
+
+  for (const type of ["play", "pause"]) {
+    document.addEventListener(
+      type,
+      (e) => {
+        if (dead || !pressLive) return;
+        logFullscreen({ at: Math.round(performance.now()), video: type });
+      },
+      true
+    );
+  }
+
+  document.addEventListener("fullscreenchange", () => {
+    if (dead || !pressLive) return;
+    const full = document.fullscreenElement;
+    logFullscreen({
+      at: Math.round(performance.now()),
+      fullscreen: full ? tagOf(full) : "left",
+      ours: fullscreenIsOurs()
+    });
+  });
+
   /* X acts on pointerdown, not click. A click handler runs long after the
      unmute has already happened — which is why stopping the click changed
      nothing at all. The decision is made on the first event of the gesture,
@@ -11982,9 +15324,85 @@ try {
     return null;
   }
 
+  /* Something that hangs out of one of the player's controls: a pop-up of that
+     control's. In its own fullscreen X draws the settings menu inside the
+     little box that holds the gear button, along with an unseen sheet over
+     the whole screen that closes the menu when clicked. Neither has a role or
+     a label to go by — the gear doesn't even say it's open. What they do have
+     is a place: a parent the size of a button, holding a labelled button,
+     which they spill out of. */
+  function controlPopUp(target, stop, levels) {
+    for (let el = target, up = 0; el && el.parentElement && up < (levels || 10); el = el.parentElement, up++) {
+      if (el === stop) break;
+      const parent = el.parentElement;
+      const outer = parent.getBoundingClientRect();
+      if (!outer.width || !outer.height || outer.width > 80 || outer.height > 80) continue;
+      const box = el.getBoundingClientRect();
+      const spills =
+        box.left < outer.left - 6 || box.top < outer.top - 6 ||
+        box.right > outer.right + 6 || box.bottom > outer.bottom + 6;
+      if (!spills) continue;
+      if (parent.querySelector('button[aria-label], [role="button"][aria-label]')) return true;
+    }
+    return false;
+  }
+
+  /* Whether X has a menu open in a player, wherever in it the menu is drawn.
+
+     The sheet behind the gear's menu hangs off the gear's box, and so is known
+     by its place — but the menu itself turned out not to: a click on a row of
+     the speed list, beside its label, was found nowhere near a control and
+     taken as a click on the video, pausing it. Only the round buttons at the
+     end of each row worked, being inputs.
+
+     So the question is asked of the player rather than of the press: is one
+     of its controls holding something large out of its own box (that sheet),
+     or is there a list of choices in it (those round buttons)? While there
+     is, a press in the player is X's — a choice, or the way the menu closes. */
+  function menuOpenIn(root) {
+    if (!root) return false;
+    /* One that can be seen: X is free to keep a closed menu's list around. */
+    let choices = 0;
+    for (const el of root.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="menuitemradio"]')) {
+      const box = el.getBoundingClientRect();
+      if (box.width && box.height && ++choices >= 2) return true;
+    }
+    for (const button of root.querySelectorAll('button[aria-label], [role="button"][aria-label]')) {
+      for (let box = button.parentElement, up = 0; box && box !== root && up < 3; box = box.parentElement, up++) {
+        const outer = box.getBoundingClientRect();
+        if (!outer.width || !outer.height || outer.width > 80 || outer.height > 80) break;
+        for (const child of box.children) {
+          if (child === button || child.contains(button)) continue;
+          const inner = child.getBoundingClientRect();
+          if (inner.width < 120 && inner.height < 120) continue; // a hover label, say: not a menu
+          if (
+            inner.left < outer.left - 6 || inner.top < outer.top - 6 ||
+            inner.right > outer.right + 6 || inner.bottom > outer.bottom + 6
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /* The player a video sits in, as far out as a menu of its might be drawn:
+     X's own fullscreen is a box around the player. */
+  function playerAround(video) {
+    const player = video.closest('[data-testid="videoPlayer"]');
+    const full = document.fullscreenElement;
+    if (full && full.contains(video) && (!player || full.contains(player))) return full;
+    return player;
+  }
+
   const mutedVideoAt = (target, point) => {
     if (dead || !store.ready || !store.settings.media.clickPausesMuted) return null;
     if (!target || !target.closest) return null;
+    /* X's pop-up layer — menus, and the click-catcher behind an open one — is
+       never part of a post, wherever it is (in our fullscreen it's moved
+       inside the tile). Its clicks are X's. */
+    if (target.closest("#layers")) return null;
 
     const player = target.closest('[data-testid="videoPlayer"], video');
 
@@ -11995,8 +15413,17 @@ try {
     if (player) {
       video = player.matches("video") ? player : player.querySelector("video");
     } else if (point) {
-      video = videoUnder(point.x, point.y, target.closest(detect.SEL.cell));
-      overOverlay = !!video;
+      /* Only within the post: the overlays this is for — the attribution
+         strip — sit in the post. Outside one, it searched the whole page, and
+         X's settings menu, which pops up over the video in a layer of its
+         own, and the invisible click-catcher X spreads while it's open, both
+         counted as over the video: clicks on them were taken as a pause and
+         swallowed, and the gear seemed to work only sometimes. */
+      const cell = target.closest(detect.SEL.cell);
+      if (cell) {
+        video = videoUnder(point.x, point.y, cell);
+        overOverlay = !!video;
+      }
     }
 
     if (!video) return null;
@@ -12006,6 +15433,7 @@ try {
        no trace, and the diagnostic looked broken. */
     const note = (outcome) => {
       logVideo("decided: " + outcome, video, { on: target.tagName });
+      sayPress("click-to-pause: " + outcome);
       lastMutedClick = {
         at: new Date().toLocaleTimeString(),
         /* Which route found the video, and whether a control ancestor was
@@ -12059,8 +15487,12 @@ try {
        testid — so it matched none of the tests below and a click on it was
        taken as a click on the video, pausing instead of seeking. Only dragging
        the round handle still worked, since that part is a slider. */
+    /* X's menus too — the settings gear's, should X draw it inside the
+       player: its items are X's to handle, whatever their labels say. */
+    const menu = target.closest('[role="menu"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="listbox"], [role="option"]');
+    if (menu) return note("a control: X's menu");
     const control = target.closest(
-      '[data-testid="scrubber"], [role="slider"], input, button, [role="button"][aria-label]'
+      '[data-testid="scrubber"], [role="slider"], input, button, [role="button"][aria-label], [data-medx-vol-slider]'
     );
     const label = control ? control.getAttribute("aria-label") || "" : "";
 
@@ -12104,6 +15536,19 @@ try {
       return note(
         "a control: " + (label || control.getAttribute("data-testid") || target.tagName)
       );
+    }
+
+    /* A control's pop-up, which is how X's fullscreen draws its settings menu: the
+       sheet behind it covers the whole player, so with the menu open every
+       click landed on it — and was taken as a pause. X never saw it, the menu
+       never closed, and the gear, mute and the rest only played or paused. */
+    if (controlPopUp(target, video.closest('[data-testid="videoPlayer"]'))) {
+      return note("a control's pop-up: left to X");
+    }
+    /* And anywhere else in the player while that menu is open: its rows are
+       not found by their place, only the sheet is. */
+    if (menuOpenIn(playerAround(video))) {
+      return note("X has a menu open in the player: left to X");
     }
 
     /* Resuming is handled here rather than handed back to X. X's own behaviour
@@ -12232,8 +15677,568 @@ try {
       return;
     }
     leavingFullscreen = false;
-    if (!document.fullscreenElement) ourFullscreen = null;
+    if (!document.fullscreenElement) {
+      restoreTileQuality(ourFullscreen);
+      ourFullscreen = null;
+    }
+    syncFullscreenLayers();
   });
+
+  /* X's pop-ups in our fullscreen. X draws its menus — the player's settings
+     gear among them — tooltips and the like in a layer of its own, #layers,
+     away from the post. In fullscreen the browser draws only the fullscreen
+     element and what's inside it, so the gear opened its menu where it
+     couldn't be seen, and seemed to do nothing. While our fullscreen is up,
+     that layer is moved inside it, then put back exactly where it was. X
+     draws into the layer by reference, so moving the container leaves what it
+     draws there alone.
+
+     X places some of what it draws there by where the layer itself sits —
+     the top of the page, which is scrolled well off screen — so once moved
+     the layer is nudged back to the very spot it had, or the menu would open
+     a scroll's length away from the gear. */
+  let layersHome = null; // { parent, next, top, left, at, origin } — where #layers lives normally
+
+  function placeFullscreenLayers() {
+    const layers = document.getElementById("layers");
+    if (!layersHome || !layers || !layers.dataset.medxFsLayers) return;
+    const home = layersHome;
+    /* Where it would be at home right now: where it was, plus however far
+       its old parent has moved since. */
+    const parentNow = home.parent && home.parent.isConnected ? home.parent.getBoundingClientRect() : home.at;
+    const wantTop = home.origin.top + (parentNow.top - home.at.top);
+    const wantLeft = home.origin.left + (parentNow.left - home.at.left);
+    const now = layers.getBoundingClientRect();
+    const top = (parseFloat(layers.style.top) || 0) + (wantTop - now.top);
+    const left = (parseFloat(layers.style.left) || 0) + (wantLeft - now.left);
+    layers.style.setProperty("top", `${Math.round(top * 100) / 100}px`, "important");
+    layers.style.setProperty("left", `${Math.round(left * 100) / 100}px`, "important");
+  }
+
+  function syncFullscreenLayers() {
+    const layers = document.getElementById("layers");
+    const current = document.fullscreenElement;
+    const ours =
+      ourFullscreen && current &&
+      (current === ourFullscreen || ourFullscreen.contains(current) || current.contains(ourFullscreen));
+    if (ours && layers && !current.contains(layers)) {
+      if (!layersHome) {
+        const parent = layers.parentNode;
+        const origin = layers.getBoundingClientRect();
+        const at = parent.getBoundingClientRect();
+        layersHome = {
+          parent,
+          next: layers.nextSibling,
+          top: [layers.style.getPropertyValue("top"), layers.style.getPropertyPriority("top")],
+          left: [layers.style.getPropertyValue("left"), layers.style.getPropertyPriority("left")],
+          origin: { top: origin.top, left: origin.left },
+          at: { top: at.top, left: at.left }
+        };
+      }
+      current.appendChild(layers);
+      layers.dataset.medxFsLayers = "1";
+      layers.style.setProperty("top", "0px", "important");
+      layers.style.setProperty("left", "0px", "important");
+      placeFullscreenLayers();
+    } else if (!ours && layersHome) {
+      const home = layersHome;
+      layersHome = null;
+      if (layers) {
+        delete layers.dataset.medxFsLayers;
+        for (const [prop, was] of [["top", home.top], ["left", home.left]]) {
+          if (was[0]) layers.style.setProperty(prop, was[0], was[1]);
+          else layers.style.removeProperty(prop);
+        }
+        if (home.parent && home.parent.isConnected) {
+          if (home.next && home.next.parentNode === home.parent) home.parent.insertBefore(layers, home.next);
+          else home.parent.appendChild(layers);
+        }
+      }
+    }
+  }
+
+  /* Full quality in fullscreen. The tile holds X's timeline-sized pictures —
+     small, compressed versions — and fullscreen only stretched them. X's
+     image addresses ask for a size with name= (small, medium, 360x360 in the
+     timeline), and name=orig is the picture as uploaded. So in fullscreen
+     each one in the tile is switched to it: the photo, drawn as a CSS
+     background on a div with a transparent <img> beside it; a video's preview
+     still; a video's poster. The original is loaded first and swapped in once
+     it's ready, so the small one stays up meanwhile rather than going blank;
+     left before it's ready, nothing is swapped. Put back on leaving, so the
+     timeline doesn't hold full-size originals. A playing video's stream is
+     X's player's to choose, sized to the player and the connection. */
+  /* An element X draws a picture on as its background: a timeline photo is a
+     div with background-image: url(…). Not just any background-image — X's
+     player draws the dark gradient under its controls the same way, as a
+     linear-gradient, and treating that as a picture stretched it over the
+     whole screen in fullscreen. */
+  /* The "(" escaped: equally valid CSS, and some selector engines (jsdom's,
+     which the tests run on) mis-read it bare inside a quoted value. */
+  const PICTURE_BG = '[style*="background-image"][style*="url\\("]';
+
+  function fullQualityUrl(url) {
+    try {
+      const u = new URL(url, window.location.href);
+      if (!/(^|\.)twimg\.com$/.test(u.hostname) || !u.searchParams.has("name")) return null;
+      if (u.searchParams.get("name") === "orig") return null;
+      u.searchParams.set("name", "orig");
+      return u.href;
+    } catch {
+      return null;
+    }
+  }
+
+  function whenLoaded(url, done) {
+    const pre = new Image();
+    pre.onload = done;
+    pre.src = url;
+  }
+
+  /* Still in our fullscreen of this tile — not left, and not refused: the
+     browser can turn a fullscreen request down, and a swap then would leave
+     the original in the timeline with no leaving to put it back. */
+  function stillOurs(tile) {
+    return ourFullscreen === tile && !!document.fullscreenElement;
+  }
+
+  function upgradeTileQuality(tile) {
+    for (const img of tile.querySelectorAll("img")) {
+      const better = fullQualityUrl(img.getAttribute("src") || "");
+      if (!better) continue;
+      whenLoaded(better, () => {
+        if (!stillOurs(tile) || !img.isConnected) return;
+        img.dataset.medxQualitySrc = img.getAttribute("src");
+        if (img.hasAttribute("srcset")) {
+          img.dataset.medxQualitySrcset = img.getAttribute("srcset");
+          img.removeAttribute("srcset");
+        }
+        img.setAttribute("src", better);
+      });
+    }
+    for (const video of tile.querySelectorAll("video[poster]")) {
+      const better = fullQualityUrl(video.getAttribute("poster"));
+      if (!better) continue;
+      whenLoaded(better, () => {
+        if (!stillOurs(tile) || !video.isConnected) return;
+        video.dataset.medxQualityPoster = video.getAttribute("poster");
+        video.setAttribute("poster", better);
+      });
+    }
+    for (const el of tile.querySelectorAll(PICTURE_BG)) {
+      const m = /url\((["']?)(.*?)\1\)/.exec(el.style.backgroundImage || "");
+      const better = m && fullQualityUrl(m[2]);
+      if (!better) continue;
+      whenLoaded(better, () => {
+        if (!stillOurs(tile) || !el.isConnected) return;
+        el.dataset.medxQualityBg = el.style.backgroundImage;
+        el.style.backgroundImage = `url("${better}")`;
+      });
+    }
+  }
+
+  function restoreTileQuality(tile) {
+    if (!tile) return;
+    for (const img of tile.querySelectorAll("img[data-medx-quality-src]")) {
+      img.setAttribute("src", img.dataset.medxQualitySrc);
+      delete img.dataset.medxQualitySrc;
+      if (img.dataset.medxQualitySrcset !== undefined) {
+        img.setAttribute("srcset", img.dataset.medxQualitySrcset);
+        delete img.dataset.medxQualitySrcset;
+      }
+    }
+    for (const video of tile.querySelectorAll("video[data-medx-quality-poster]")) {
+      video.setAttribute("poster", video.dataset.medxQualityPoster);
+      delete video.dataset.medxQualityPoster;
+    }
+    for (const el of tile.querySelectorAll("[data-medx-quality-bg]")) {
+      el.style.backgroundImage = el.dataset.medxQualityBg;
+      delete el.dataset.medxQualityBg;
+    }
+  }
+
+  /* ---------- zooming pictures and videos ----------
+
+     Alt + scroll zooms the picture or video under the mouse, in MED-X's
+     fullscreen and in X's media viewer, around the point under the cursor,
+     up to 8x. Alt + drag to move around while zoomed, and double-click, or
+     scroll back out, to reset. It resets too on leaving fullscreen, closing
+     the viewer, or moving to another photo. Moving around is Alt + drag, so
+     a plain click is always just a click.
+
+     X draws a photo as a background on a div with a transparent <img> over
+     it, so every layer of the picture is zoomed together. In fullscreen the
+     pictures ignore the mouse — clicks go to the player around them — so
+     what's under the cursor can't find them; there, every layer in the tile
+     is zoomed, as fullscreen only ever shows the one. Only the picture is
+     scaled: X's controls stay as they are, on top. */
+  const ZOOM_MEDIA = "img, video, " + PICTURE_BG;
+  const ZOOM_MAX = 8;
+  let zoom = null; // { scope, items: [{ el, ox, oy, tx, ty, w, h, src }], s }
+  let zoomDrag = null;
+  let zoomSwallowUntil = 0;
+
+  function mediaSource(el) {
+    return el.getAttribute("src") || el.currentSrc || el.style.backgroundImage || "";
+  }
+
+  function zoomGroupAt(e) {
+    if (store.settings.mediaZoom === false) return null;
+    const target = e.target;
+    if (!target || !target.closest) return null;
+    let scope = null;
+    let media = [];
+    const current = document.fullscreenElement;
+    const ours =
+      ourFullscreen && current &&
+      (current === ourFullscreen || ourFullscreen.contains(current) || current.contains(ourFullscreen));
+    if (ours && ourFullscreen.contains(target)) {
+      scope = ourFullscreen;
+      media = [...ourFullscreen.querySelectorAll(ZOOM_MEDIA)];
+    } else {
+      const modal = target.closest('[aria-modal="true"]');
+      if (!modal) return null; // the timeline: not zoomed
+      scope = modal;
+      const hit = (document.elementsFromPoint ? document.elementsFromPoint(e.clientX, e.clientY) : [target])
+        .filter((el) => modal.contains(el) && el.matches(ZOOM_MEDIA));
+      const found = new Set(hit);
+      for (const el of hit) {
+        for (const sib of el.parentElement ? el.parentElement.children : []) {
+          if (sib.matches(ZOOM_MEDIA)) found.add(sib);
+        }
+      }
+      media = [...found];
+    }
+    media = media.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width >= 100 && r.height >= 100; // not an avatar or an icon
+    });
+    return media.length ? { scope, media } : null;
+  }
+
+  /* The zoom level, in a small badge by the cursor: while zooming or dragging
+     with Alt, and while Alt is held over a zoomed picture; gone a moment after.
+     In fullscreen the browser draws only the fullscreen element and what's in
+     it, so the badge goes inside whatever is fullscreen — the page itself
+     otherwise. */
+  const ZOOM_BADGE_LINGER = 1200; // ms it stays after the last change
+  let zoomBadge = null;
+  let zoomBadgeTimer = null;
+
+  function zoomLabel(scale) {
+    return Number(scale.toFixed(1)) + "x";
+  }
+
+  function showZoomBadge(scale, x, y, linger = ZOOM_BADGE_LINGER) {
+    const host = document.fullscreenElement || document.body;
+    if (!host) return;
+    if (!zoomBadge) {
+      zoomBadge = document.createElement("div");
+      zoomBadge.id = "medx-zoom-badge";
+      zoomBadge.setAttribute("aria-hidden", "true");
+    }
+    if (zoomBadge.parentElement !== host) host.appendChild(zoomBadge);
+    const label = zoomLabel(scale);
+    if (zoomBadge.textContent !== label) zoomBadge.textContent = label;
+    /* Below and right of the cursor; flipped to the other side near the
+       window's edges, so it stays on screen. */
+    const w = zoomBadge.offsetWidth || 44;
+    const h = zoomBadge.offsetHeight || 22;
+    const left = x + 14 + w > window.innerWidth ? x - 14 - w : x + 14;
+    const top = y + 14 + h > window.innerHeight ? y - 14 - h : y + 14;
+    zoomBadge.style.left = Math.max(0, left) + "px";
+    zoomBadge.style.top = Math.max(0, top) + "px";
+    zoomBadge.dataset.show = "1";
+    clearTimeout(zoomBadgeTimer);
+    if (linger) zoomBadgeTimer = setTimeout(hideZoomBadge, linger);
+  }
+
+  function hideZoomBadge() {
+    clearTimeout(zoomBadgeTimer);
+    if (zoomBadge) delete zoomBadge.dataset.show;
+  }
+
+  function dropZoomBadge() {
+    hideZoomBadge();
+    if (zoomBadge) zoomBadge.remove();
+  }
+
+  function applyZoom() {
+    for (const it of zoom.items) {
+      it.el.style.setProperty("--medx-zs", String(zoom.s));
+      it.el.style.setProperty("--medx-zx", it.tx + "px");
+      it.el.style.setProperty("--medx-zy", it.ty + "px");
+      it.el.dataset.medxZoomed = "1";
+    }
+  }
+
+  function resetZoom() {
+    dropZoomBadge();
+    if (!zoom) return;
+    for (const it of zoom.items) {
+      delete it.el.dataset.medxZoomed;
+      for (const v of ["--medx-zs", "--medx-zx", "--medx-zy"]) it.el.style.removeProperty(v);
+    }
+    zoom = null;
+    zoomDrag = null;
+  }
+
+  /* Kept so the picture always covers its own box: no empty gap opening at an
+     edge as it's dragged or zoomed out. */
+  function clampZoom(it) {
+    it.tx = Math.min(0, Math.max((1 - zoom.s) * it.w, it.tx));
+    it.ty = Math.min(0, Math.max((1 - zoom.s) * it.h, it.ty));
+  }
+
+  function zoomBy(factor, x, y) {
+    const before = zoom.s;
+    const after = Math.min(ZOOM_MAX, Math.max(1, before * factor));
+    if (after === 1) return resetZoom();
+    for (const it of zoom.items) {
+      const localX = (x - it.ox - it.tx) / before;
+      const localY = (y - it.oy - it.ty) / before;
+      it.tx = x - it.ox - after * localX;
+      it.ty = y - it.oy - after * localY;
+    }
+    zoom.s = after;
+    for (const it of zoom.items) clampZoom(it);
+    applyZoom();
+  }
+
+  /* Only for elements: an event sent to the window itself has no element to
+     be inside of. */
+  function zoomedHere(target) {
+    return !!(zoom && target && target.nodeType === 1 && zoom.scope && zoom.scope.isConnected && zoom.scope.contains(target));
+  }
+
+  function onControl(target) {
+    return !!(target && target.closest && target.closest('button, [role="slider"], input, [data-testid="scrubber"]'));
+  }
+
+  window.addEventListener(
+    "wheel",
+    (e) => {
+      if (dead || !e.altKey) return;
+      const group = zoomGroupAt(e);
+      if (!group) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const same = zoom && group.media.length === zoom.items.length && group.media.every((el) => zoom.items.some((it) => it.el === el));
+      if (!same) {
+        resetZoom();
+        zoom = {
+          scope: group.scope,
+          s: 1,
+          items: group.media.map((el) => {
+            const r = el.getBoundingClientRect();
+            return { el, ox: r.left, oy: r.top, w: r.width, h: r.height, tx: 0, ty: 0, src: mediaSource(el) };
+          })
+        };
+      }
+      const step = Math.min(1.5, Math.max(1 / 1.5, Math.exp(-e.deltaY * 0.0025)));
+      zoomBy(step, e.clientX, e.clientY);
+      showZoomBadge(zoom ? zoom.s : 1, e.clientX, e.clientY);
+    },
+    { capture: true, passive: false }
+  );
+
+  /* Moving around while zoomed: Alt + drag. Without Alt, presses and clicks
+     are left entirely alone — they pause the video, and X's viewer works as
+     it always does. With Alt held, the press is taken before anything else
+     sees it, and the rest of it with it, so X never takes it as a click. */
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      /* A new press without Alt is a click of its own: whatever was being kept
+         from X after the last drag stops being kept, there and then. */
+      if (!e.altKey && !zoomDrag) zoomSwallowUntil = 0;
+      if (dead || e.button !== 0 || !e.altKey || !zoomedHere(e.target) || onControl(e.target)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      zoomDrag = { x: e.clientX, y: e.clientY };
+      zoomSwallowUntil = Date.now() + 60000;
+    },
+    true
+  );
+  /* Alt held over a zoomed picture, not dragging: the badge follows the
+     cursor, and goes once it leaves the picture. */
+  let lastPointer = { x: 0, y: 0, target: null };
+  window.addEventListener(
+    "pointermove",
+    (e) => {
+      lastPointer = { x: e.clientX, y: e.clientY, target: e.target };
+      /* The pointer moving with the key up: it was let go somewhere this
+         never heard about. */
+      if (!e.altKey && altNote && altNote.dataset.show) hideAltNote();
+      if (zoomDrag || !zoom || !e.altKey) return;
+      if (zoomedHere(e.target)) showZoomBadge(zoom.s, e.clientX, e.clientY, 0);
+      else hideZoomBadge();
+    },
+    true
+  );
+
+  window.addEventListener(
+    "pointermove",
+    (e) => {
+      if (!zoomDrag || !zoom) return;
+      const dx = e.clientX - zoomDrag.x;
+      const dy = e.clientY - zoomDrag.y;
+      zoomDrag = { x: e.clientX, y: e.clientY };
+      for (const it of zoom.items) {
+        it.tx += dx;
+        it.ty += dy;
+        clampZoom(it);
+      }
+      applyZoom();
+      showZoomBadge(zoom.s, e.clientX, e.clientY);
+    },
+    true
+  );
+  window.addEventListener(
+    "pointerup",
+    () => {
+      if (!zoomDrag) return;
+      zoomDrag = null;
+      zoomSwallowUntil = Date.now() + 400; // the rest of the press, X's to never see
+    },
+    true
+  );
+
+  /* Alt held, marked on the page, for the grab cursor over a zoomed picture:
+     it shows when dragging is there to be done. */
+  const markAlt = (on) => {
+    if (on) document.documentElement.dataset.medxAlt = "1";
+    else delete document.documentElement.dataset.medxAlt;
+  };
+  /* A note while Alt is held: "Alt Key Held", in a small box at the bottom
+     of the screen. Alt reveals hidden posts and zooms and moves pictures, and
+     nothing said the key had been taken as down.
+
+     Not at once: Alt is also the start of Alt+Tab and the like, and the box
+     would flash on the way to every one of them. It waits a moment, and a key
+     let go — or a window left — before then shows nothing.
+
+     Drawn inside whatever is fullscreen, like the zoom badge: a browser in
+     fullscreen draws only what's inside the fullscreen element. */
+  const ALT_NOTE_AFTER = 150;
+  let altNote = null;
+  let altNoteTimer = 0;
+
+  function showAltNote() {
+    altNoteTimer = 0;
+    if (dead || !store.ready || store.settings.enabled === false || store.settings.altNote === false) return;
+    const host = document.fullscreenElement || document.body;
+    if (!host) return;
+    if (!altNote) {
+      altNote = document.createElement("div");
+      altNote.id = "medx-alt-note";
+      altNote.setAttribute("aria-hidden", "true");
+      altNote.textContent = "Alt Key Held";
+    }
+    if (altNote.parentElement !== host) host.appendChild(altNote);
+    altNote.dataset.show = "1";
+  }
+
+  function hideAltNote() {
+    clearTimeout(altNoteTimer);
+    altNoteTimer = 0;
+    if (altNote) delete altNote.dataset.show;
+  }
+
+  /* Fullscreen entered or left with the key down: the note goes where it can
+     be seen. */
+  document.addEventListener("fullscreenchange", () => {
+    if (altNote && altNote.dataset.show) showAltNote();
+  });
+
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "Alt") {
+        /* Alt and another key is a shortcut of the browser's or X's, not a hold. */
+        if (e.altKey && e.key !== "Control" && e.key !== "Shift" && e.key !== "Meta") hideAltNote();
+        return;
+      }
+      markAlt(true);
+      if (e.ctrlKey || e.metaKey) hideAltNote();
+      else if (!altNoteTimer && !(altNote && altNote.dataset.show)) altNoteTimer = setTimeout(showAltNote, ALT_NOTE_AFTER);
+      /* Over a zoomed picture: the badge, where the cursor is, while Alt is held. */
+      if (zoom && zoomedHere(lastPointer.target)) showZoomBadge(zoom.s, lastPointer.x, lastPointer.y, 0);
+    },
+    true
+  );
+  window.addEventListener(
+    "keyup",
+    (e) => {
+      if (e.key !== "Alt") return;
+      markAlt(false);
+      hideAltNote();
+      if (zoomBadge && zoomBadge.dataset.show) {
+        clearTimeout(zoomBadgeTimer);
+        zoomBadgeTimer = setTimeout(hideZoomBadge, 500);
+      }
+    },
+    true
+  );
+  window.addEventListener("blur", () => {
+    markAlt(false);
+    hideAltNote(); // let go in another window, the key is never reported as up
+  });
+
+  for (const type of ["mousedown", "mouseup", "click"]) {
+    window.addEventListener(
+      type,
+      (e) => {
+        if (Date.now() > zoomSwallowUntil || !zoomedHere(e.target) || onControl(e.target)) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        /* The click that ends a drag is the last of it: nothing after is kept. */
+        if (type === "click" && !zoomDrag) zoomSwallowUntil = 0;
+      },
+      true
+    );
+  }
+  window.addEventListener(
+    "dblclick",
+    (e) => {
+      if (!zoomedHere(e.target) || onControl(e.target)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      resetZoom();
+      showZoomBadge(1, e.clientX, e.clientY, 800);
+    },
+    true
+  );
+
+  /* Reset when what was zoomed is gone: fullscreen left, the viewer closed,
+     or another photo shown in its place. */
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && zoom) resetZoom();
+  });
+  function checkZoom() {
+    if (!zoom) return;
+    if (!zoom.scope.isConnected || zoom.items.some((it) => !it.el.isConnected || mediaSource(it.el) !== it.src)) {
+      resetZoom();
+    }
+  }
+
+  /* A click on the video in MED-X's fullscreen: play or pause — or, still
+     only a preview, start it. Shared by the fullscreen's own click handling
+     and by a click on a zoomed video. */
+  function toggleFullscreenVideo() {
+    if (!ourFullscreen) return;
+    const video = ourFullscreen.querySelector("video");
+    if (!video) {
+      startPreview(ourFullscreen);
+      return;
+    }
+    if (video.paused) {
+      const started = video.play();
+      if (started && started.catch) started.catch(() => {});
+    } else {
+      video.pause();
+    }
+  }
 
   function goFullscreen(tile) {
     /* Always the whole tile. A playing video used to go fullscreen in X's
@@ -12244,6 +16249,7 @@ try {
     ourFullscreen = target;
     const request = target.requestFullscreen && target.requestFullscreen();
     if (request && request.catch) request.catch(() => {});
+    upgradeTileQuality(target);
     /* Not started here. A video that hasn't begun opens on its preview, and
        the first click in fullscreen starts it — see the handler above. */
   }
@@ -12296,6 +16302,36 @@ try {
     return outer.handle ? `/${outer.handle}/status/${outer.id}` : null;
   }
 
+  /* For diagnosing the Expand button from the page console
+     (await MEDX_DEBUG.expandInfo()): each video tile on the page, and every
+     step of working out where its viewer is — the outer post, whether the
+     tile sits in a quote card, the quoted post and its author, and the
+     address it comes to. */
+  function expandReport() {
+    return [...document.querySelectorAll('[data-testid="tweetPhoto"]')]
+      .filter((tile) => tile.querySelector(VIDEOISH))
+      .map((tile) => {
+        const article = tile.closest("article");
+        let outer = null;
+        try {
+          outer = article && detect.read(article.closest(detect.SEL.cell) || article);
+        } catch {}
+        const card = tile.closest(detect.SEL.quote);
+        const inQuote = !!(card && article && article.contains(card) && card !== article);
+        const quotedId = outer && outer.id ? posts.quotedBy(outer.id) : null;
+        return {
+          page: window.location.pathname,
+          outerId: (outer && outer.id) || null,
+          outerHandle: (outer && outer.handle) || null,
+          inQuoteCard: inQuote,
+          quotedId,
+          quotedAuthorFromData: quotedId ? posts.quoteAuthor(quotedId) : null,
+          quotedHandleFromPage: (outer && outer.quoteHandle) || null,
+          viewerBase: permalinkFor(tile)
+        };
+      });
+  }
+
   function openInViewer(tile) {
     const base = permalinkFor(tile);
     if (!base) return false;
@@ -12335,6 +16371,9 @@ try {
   let fullscreenSwallowUntil = 0;
   let fullscreenBypass = false;
 
+  const X_MENU =
+    '[role="menu"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="listbox"], [role="option"], [role="dialog"]';
+
   function inOurFullscreen(target) {
     const current = document.fullscreenElement;
     /* Ours, or one X has stacked inside ours — the stack this code exists to
@@ -12346,6 +16385,7 @@ try {
        none of ours, ourFullscreen is null and every click in that fullscreen
        threw here, from a capture-phase listener on window. */
     if (!ourFullscreen || !current || !target) return false;
+    if (target.nodeType !== 1 && target.nodeType !== 3) return false; // the window itself, say: inside nothing
     const related =
       current === ourFullscreen ||
       ourFullscreen.contains(current) ||
@@ -12356,7 +16396,18 @@ try {
   window.addEventListener(
     "pointerdown",
     (e) => {
+      /* As above: a new press ends whatever the last one was holding back. */
+      fullscreenSwallowUntil = 0;
       if (dead || e.button !== 0 || !inOurFullscreen(e.target)) return;
+
+      /* X's pop-ups, moved into our fullscreen so they can be seen: the gear's
+         menu and the sheet behind it are X's to handle, not play/pause. */
+      if (e.target.closest && e.target.closest("#layers")) {
+        sayPress("X's pop-up layer: left to X");
+        return;
+      }
+      placeFullscreenLayers(); // before X reads where to open a menu
+      if (zoomedHere(e.target) && e.altKey && !onControl(e.target)) return; // zoomed, Alt held: a drag
 
       /* Our own buttons, drawn in the corner of the fullscreen tile. This
          handler runs before theirs and takes every click in the fullscreen, so
@@ -12365,6 +16416,7 @@ try {
          X's viewer. */
       const hit = expandPartAt(e.target, e.clientX, e.clientY);
       if (hit) {
+        sayPress("our corner button: " + hit.part);
         e.preventDefault();
         e.stopImmediatePropagation();
         fullscreenSwallowUntil = Date.now() + 700;
@@ -12379,6 +16431,7 @@ try {
          between them. Taken here and turned into leaving every level. */
       const button = e.target.closest('button[aria-label], [role="button"][aria-label]');
       if (button && /full ?screen/i.test(button.getAttribute("aria-label") || "")) {
+        sayPress("X's fullscreen button: leaving");
         e.preventDefault();
         e.stopImmediatePropagation();
         fullscreenSwallowUntil = Date.now() + 700;
@@ -12387,30 +16440,33 @@ try {
       }
 
       /* The scrubber, the volume slider and X's other buttons keep working. */
-      if (
-        e.target.closest(
-          '[data-testid="scrubber"], [role="slider"], input, button, [role="button"][aria-label]'
-        )
-      ) {
+      const control = e.target.closest(
+        '[data-testid="scrubber"], [role="slider"], input, button, [role="button"][aria-label], [data-medx-vol-slider]'
+      );
+      if (control) {
+        sayPress("a control: left to X — " + tagOf(control));
         return;
       }
-      const video = ourFullscreen.querySelector("video");
+      if (e.target.closest(X_MENU)) {
+        sayPress("X's menu, drawn in the player: left to X");
+        return;
+      }
+
+      /* Or a control's pop-up, should X draw the menu inside the player as it
+         does in its own fullscreen. */
+      if (controlPopUp(e.target, ourFullscreen)) {
+        sayPress("a control's pop-up: left to X");
+        return;
+      }
+      if (menuOpenIn(ourFullscreen)) {
+        sayPress("X has a menu open in the player: left to X");
+        return;
+      }
+      sayPress("the picture: play or pause");
       e.preventDefault();
       e.stopImmediatePropagation();
       fullscreenSwallowUntil = Date.now() + 700;
-
-      /* Still a preview: this click is what starts it. */
-      if (!video) {
-        startPreview(ourFullscreen);
-        return;
-      }
-
-      if (video.paused) {
-        const started = video.play();
-        if (started && started.catch) started.catch(() => {});
-      } else {
-        video.pause();
-      }
+      toggleFullscreenVideo();
     },
     true
   );
@@ -12423,6 +16479,7 @@ try {
       (e) => {
         if (fullscreenBypass) return;
         if (Date.now() > fullscreenSwallowUntil || !inOurFullscreen(e.target)) return;
+        sayPress("fullscreen hold-back: kept the " + type + " from X");
         e.preventDefault();
         e.stopImmediatePropagation();
       },
@@ -12458,6 +16515,10 @@ try {
   window.addEventListener(
     "pointerdown",
     (e) => {
+      /* A new press ends the last one's hold-back, as with the other two.
+         It was left running, so a click on the gear — or anything else in the
+         picture — straight after going fullscreen was eaten. */
+      expandSwallowUntil = 0;
       if (dead || e.button !== 0) return;
       const hit = expandPartAt(e.target, e.clientX, e.clientY);
       if (!hit) return;
@@ -12478,6 +16539,7 @@ try {
       (e) => {
         if (Date.now() > expandSwallowUntil || expandBypass) return;
         if (!e.target || !e.target.closest || !e.target.closest('[data-testid="tweetPhoto"]')) return;
+        sayPress("expand hold-back: kept the " + type + " from X");
         e.preventDefault();
         e.stopImmediatePropagation();
       },
@@ -12493,6 +16555,11 @@ try {
   window.addEventListener(
     "pointerdown",
     (e) => {
+      /* A new press is a new gesture, never the tail of the last one: what was
+         being held back after a pause stops being held back. Held for its
+         full 700ms, it swallowed the next click as well — pause a video, reach
+         for the gear, and the gear's click never arrived. */
+      swallowUntil = 0;
       const found = mutedVideoAt(e.target, { x: e.clientX, y: e.clientY });
       if (!found) return;
       const { video, resume } = found;
@@ -12527,6 +16594,7 @@ try {
         if (Date.now() > swallowUntil) return;
         if (!e.target || !e.target.closest) return;
         if (!e.target.closest('[data-testid="videoPlayer"], video')) return;
+        sayPress("click-to-pause hold-back: kept the " + type + " from X");
         e.preventDefault();
         e.stopPropagation();
       },
@@ -12760,6 +16828,18 @@ try {
         data = plain(MEDX.status());
       } else if (req.cmd === "bait") {
         data = plain(baitReportData());
+      } else if (req.cmd === "expand") {
+        data = plain(expandReport());
+      } else if (req.cmd === "fsclicks") {
+        pressLive = true;
+        data = plain({
+          log: PRESS_LOG,
+          live: "recording from now on: each click on a video is kept, and printed to this console as [MEDX click]",
+          fullscreenNow: document.fullscreenElement ? tagOf(document.fullscreenElement) : "none",
+          oursNow: fullscreenIsOurs(),
+          clickToPause: !!(store.settings.media && store.settings.media.clickPausesMuted),
+          presses: fullscreenPresses
+        });
       } else if (req.cmd === "explain") {
         const el = req.arg
           ? document.querySelector(req.arg)
