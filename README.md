@@ -48,7 +48,9 @@ extension sync enabled.
 - the accounts and quoted posts you have muted, with their expiry;
 - your muted words as reported by X, used to apply them to quoted posts, which
   X does not do itself;
-- any picture or video you choose as a background;
+- any pictures or videos you choose as backgrounds. These can add up to more
+  than Chrome normally lets an extension store, which is why MED-X asks for
+  unlimited local storage;
 - a working cache of profile locations, bios and "Account based in" countries
   for accounts that have been on your screen, so the same account doesn't have
   to be re-read while you scroll.
